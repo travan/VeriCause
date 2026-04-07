@@ -1,0 +1,29 @@
+{
+  "name": "ai-reliability-layer",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Shared core, NestJS server, and CLI for validating AI failure analysis against runtime evidence.",
+  "scripts": {
+    "build": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\" && tsc -p tsconfig.build.json --incremental false",
+    "check": "tsc --noEmit",
+    "start:server": "node dist/server/main.js",
+    "start:server:dev": "tsx watch src/server/main.ts",
+    "cli": "tsx src/cli/main.ts",
+    "cli:dist": "node dist/cli/main.js"
+  },
+  "dependencies": {
+    "@nestjs/common": "^10.0.0",
+    "@nestjs/core": "^10.0.0",
+    "@nestjs/platform-express": "^10.0.0",
+    "gray-matter": "^4.0.3",
+    "playwright": "^1.53.0",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.1",
+    "typescript": "^5.8.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.16.0"
+  }
+}

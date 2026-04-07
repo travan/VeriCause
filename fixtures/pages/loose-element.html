@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Loose Element Fixture</title>
+  </head>
+  <body>
+    <main>
+      <h1>Loose Element Fixture</h1>
+      <div id="status">ready</div>
+      <div id="button-host"></div>
+    </main>
+    <script>
+      const host = document.getElementById("button-host");
+      const status = document.getElementById("status");
+
+      function mountButton() {
+        const button = document.createElement("button");
+        button.id = "dynamic-submit";
+        button.type = "button";
+        button.textContent = "Dynamic Submit";
+        button.addEventListener("mouseenter", () => {
+          status.textContent = "detached";
+          button.remove();
+          window.setTimeout(mountButton, 50);
+        }, { once: true });
+        host.appendChild(button);
+      }
+
+      mountButton();
+    </script>
+  </body>
+</html>

@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Delayed Element Fixture</title>
+  </head>
+  <body>
+    <main>
+      <h1>Delayed Element Fixture</h1>
+      <div id="status">waiting</div>
+    </main>
+    <script>
+      const params = new URLSearchParams(window.location.search);
+      const phase = params.get("phase");
+      const delayMs = phase === "retry_run" ? 100 : 1600;
+
+      window.setTimeout(() => {
+        const button = document.createElement("button");
+        button.id = "submit";
+        button.type = "button";
+        button.textContent = "Submit";
+        button.addEventListener("click", () => {
+          document.getElementById("status").textContent = "clicked";
+        });
+        document.body.appendChild(button);
+      }, delayMs);
+    </script>
+  </body>
+</html>
