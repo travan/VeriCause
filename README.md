@@ -50,6 +50,9 @@ artifacts/
 npm install
 npm run check
 npm run build
+npm run test
+npm run test:unit
+npm run test:integration
 npm run start:server:dev
 npm run cli -- discover
 npm run cli -- analyze --all
@@ -71,6 +74,19 @@ npm run cli -- analyze --file ./scenarios/invalid-selector.md --provider mock --
 
 - `npm run cli -- analyze --all --async`
   Create an asynchronous run, stream progress in the terminal, and print aggregated results when the run finishes.
+
+## Testing
+
+- `npm run test:unit`
+  Runs fast unit tests for deterministic core logic such as scenario loading and reliability evaluation.
+
+- `npm run test:integration`
+  Runs a mini automation suite against real Playwright fixtures to validate the end-to-end pipeline.
+
+- `npm run test`
+  Runs both unit and integration tests.
+
+The GitHub Actions workflow is defined in [ci.yml](/Users/vantranguyenthi/Documents/project/my_app/.github/workflows/ci.yml).
 
 ## API
 

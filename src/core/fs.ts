@@ -1,4 +1,4 @@
-import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, rename, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
 export async function ensureDir(path: string): Promise<void> {
@@ -28,7 +28,9 @@ export async function readTextFile(path: string): Promise<string> {
 
 export async function writeJsonFile(path: string, value: unknown): Promise<void> {
   await ensureDir(dirname(path));
-  await writeFile(path, JSON.stringify(value, null, 2), "utf8");
+  const temporaryPath = `${path}.tmp-${process.pid}-${Date.now()}`;
+  await writeFile(temporaryPath, JSON.stringify(value, null, 2), "utf8");
+  await rename(temporaryPath, path);
 }
 
 export async function readJsonFile<T>(path: string): Promise<T> {

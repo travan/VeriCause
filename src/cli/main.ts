@@ -6,7 +6,7 @@ type AnalyzeCliArgs = {
   asyncMode: boolean;
 };
 
-function printUsage(): void {
+export function printUsage(): void {
   console.log(`Usage:
   npm run cli -- discover
   npm run cli -- analyze --all
@@ -16,7 +16,7 @@ function printUsage(): void {
   npm run cli -- analyze --file <path> --provider mock --model gpt-5.4`);
 }
 
-function parseAnalyzeArgs(args: string[]): AnalyzeCliArgs {
+export function parseAnalyzeArgs(args: string[]): AnalyzeCliArgs {
   const input: RunAnalysisInput = {};
   let asyncMode = false;
 
@@ -69,11 +69,11 @@ function parseAnalyzeArgs(args: string[]): AnalyzeCliArgs {
   };
 }
 
-function isTerminalRunStatus(status: AnalysisRunStatus): boolean {
+export function isTerminalRunStatus(status: AnalysisRunStatus): boolean {
   return status === "completed" || status === "failed";
 }
 
-async function waitForRun(
+export async function waitForRun(
   runtime: ReturnType<typeof createCoreRuntime>,
   runId: string,
 ): Promise<void> {
@@ -98,7 +98,7 @@ async function waitForRun(
   }
 }
 
-async function main(): Promise<void> {
+export async function main(): Promise<void> {
   const [command, ...args] = process.argv.slice(2);
   const runtime = createCoreRuntime();
 
@@ -139,4 +139,7 @@ async function main(): Promise<void> {
   }
 }
 
-void main();
+/* istanbul ignore next */
+if (require.main === module) {
+  void main();
+}
