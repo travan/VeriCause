@@ -223,8 +223,10 @@ describe("adapter and entrypoint modules", () => {
     };
     (createCoreRuntime as jest.Mock).mockReturnValue(runtime);
     const argv = process.argv;
+    const exitCode = process.exitCode;
 
     try {
+      process.exitCode = 0;
       process.argv = ["node", "cli", "discover"];
       await main();
 
@@ -244,6 +246,7 @@ describe("adapter and entrypoint modules", () => {
       await main();
     } finally {
       process.argv = argv;
+      process.exitCode = exitCode;
     }
 
     expect(logSpy).toHaveBeenCalled();
