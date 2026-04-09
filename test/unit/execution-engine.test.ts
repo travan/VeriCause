@@ -276,4 +276,119 @@ describe("PlaywrightExecutionEngine internals", () => {
       await rm(artifactsDir, { recursive: true, force: true });
     }
   });
+
+  it("reuses a pooled context across successive runs", async () => {
+    const artifactsDir = await mkdtemp(join(tmpdir(), "ai-reliability-pool-"));
+    const makePage = (): any => ({
+      goto: jest.fn(async () => undefined),
+      screenshot: jest.fn(async () => undefined),
+      on: jest.fn(),
+      route: jest.fn(async () => undefined),
+      locator: jest.fn((selector: string) => {
+        if (selector === "#status") {
+          return { count: jest.fn(async () => 0) };
+        }
+        return {
+          first: jest.fn(() => ({
+            waitFor: jest.fn(async () => undefined),
+            click: jest.fn(async () => undefined),
+          })),
+          count: jest.fn(async () => 1),
+        };
+      }),
+    });
+
+    const context = {
+      newPage: jest.fn(async () => makePage()),
+      close: jest.fn(async () => undefined),
+      tracing: { start: jest.fn(), stop: jest.fn() },
+    };
+    const browser = {
+      newContext: jest.fn(async () => context),
+      close: jest.fn(async () => undefined),
+    };
+    launchMock.mockResolvedValue(browser);
+
+    const scenario = {
+      id: "delayed-element",
+      name: "Delayed element",
+      sourceFile: "file",
+      sourceType: "ts" as const,
+      url: "fixture://delayed-element",
+      selector: "#submit",
+      timeoutMs: 1000,
+    };
+
+    const engine = new PlaywrightExecutionEngine(
+      artifactsDir,
+      resolve(process.cwd(), "fixtures/pages"),
+    );
+
+    try {
+      await engine.runFirstAttempt(scenario);
+      await engine.retry(scenario);
+
+      // newContext should be called only once; the second run reuses the pooled context
+      expect(browser.newContext).toHaveBeenCalledTimes(1);
+    } finally {
+      await engine.close();
+      await rm(artifactsDir, { recursive: true, force: true });
+    }
+  });
+
+  it("drains the context pool when close() is called", async () => {
+    const artifactsDir = await mkdtemp(join(tmpdir(), "ai-reliability-drain-"));
+    const makePage = (): any => ({
+      goto: jest.fn(async () => undefined),
+      screenshot: jest.fn(async () => undefined),
+      on: jest.fn(),
+      route: jest.fn(async () => undefined),
+      locator: jest.fn((selector: string) => {
+        if (selector === "#status") return { count: jest.fn(async () => 0) };
+        return {
+          first: jest.fn(() => ({
+            waitFor: jest.fn(async () => undefined),
+            click: jest.fn(async () => undefined),
+          })),
+          count: jest.fn(async () => 1),
+        };
+      }),
+    });
+
+    const context = {
+      newPage: jest.fn(async () => makePage()),
+      close: jest.fn(async () => undefined),
+      tracing: { start: jest.fn(), stop: jest.fn() },
+    };
+    const browser = {
+      newContext: jest.fn(async () => context),
+      close: jest.fn(async () => undefined),
+    };
+    launchMock.mockResolvedValue(browser);
+
+    const engine = new PlaywrightExecutionEngine(
+      artifactsDir,
+      resolve(process.cwd(), "fixtures/pages"),
+    );
+
+    try {
+      await engine.runFirstAttempt({
+        id: "delayed-element",
+        name: "Delayed element",
+        sourceFile: "file",
+        sourceType: "ts",
+        url: "fixture://delayed-element",
+        selector: "#submit",
+        timeoutMs: 1000,
+      });
+
+      // context is returned to pool; close() should drain it
+      await engine.close();
+
+      expect(context.close).toHaveBeenCalled();
+      expect(browser.close).toHaveBeenCalled();
+    } finally {
+      await rm(artifactsDir, { recursive: true, force: true });
+    }
+  });
 });

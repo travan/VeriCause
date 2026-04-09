@@ -11,8 +11,11 @@ import {
 import { ensureDir } from "./fs";
 import { ExecutionResult, ScenarioDefinition, SelectorProbeResult } from "./types";
 
+const CONTEXT_POOL_MAX_SIZE = 5;
+
 export class PlaywrightExecutionEngine {
   private browserPromise: Promise<Browser> | null = null;
+  private readonly contextPool: BrowserContext[] = [];
 
   constructor(
     private readonly artifactsDir: string,
@@ -30,6 +33,10 @@ export class PlaywrightExecutionEngine {
   }
 
   async close(): Promise<void> {
+    await Promise.all(
+      this.contextPool.splice(0).map((ctx) => ctx.close().catch(() => undefined)),
+    );
+
     if (!this.browserPromise) {
       return;
     }
@@ -38,6 +45,23 @@ export class PlaywrightExecutionEngine {
     this.browserPromise = null;
 
     await browser?.close().catch(() => undefined);
+  }
+
+  private async acquireContext(): Promise<BrowserContext> {
+    const pooled = this.contextPool.pop();
+    if (pooled) {
+      return pooled;
+    }
+    const browser = await this.getBrowser();
+    return browser.newContext();
+  }
+
+  private async releaseContext(context: BrowserContext): Promise<void> {
+    if (this.contextPool.length < CONTEXT_POOL_MAX_SIZE) {
+      this.contextPool.push(context);
+    } else {
+      await context.close().catch(() => undefined);
+    }
   }
 
   private async runAttempt(
@@ -49,11 +73,11 @@ export class PlaywrightExecutionEngine {
     const timingMs: ExecutionResult["timingMs"] = {};
 
     const browserStart = Date.now();
-    const browser = await this.getBrowser();
+    await this.getBrowser();
     timingMs.getBrowser = Date.now() - browserStart;
 
     const contextStart = Date.now();
-    const context = await browser.newContext();
+    const context = await this.acquireContext();
     timingMs.newContext = Date.now() - contextStart;
 
     const page = await context.newPage();
@@ -143,7 +167,7 @@ export class PlaywrightExecutionEngine {
       if (this.traceEnabled) {
         await context.tracing.stop({ path: tracePath }).catch(() => undefined);
       }
-      await context.close();
+      await this.releaseContext(context);
     }
   }
 
@@ -175,7 +199,7 @@ export class PlaywrightExecutionEngine {
     const statusLocator = page.locator("#status");
     const statusCount = await statusLocator.count();
     const statusText = statusCount > 0
-      ? await statusLocator.first().textContent({ timeout: 50 }).catch(() => null)
+      ? await statusLocator.first().textContent({ timeout: 200 }).catch(() => null)
       : null;
 
     return {

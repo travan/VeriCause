@@ -113,4 +113,37 @@ describe("ScenarioLoader", () => {
       await rm(root, { recursive: true, force: true });
     }
   });
+
+  it("caches scenario discovery and returns the same reference on repeated calls", async () => {
+    const loader = new ScenarioLoader(scenarioDir);
+
+    const first = await loader.discoverScenarios();
+    const second = await loader.discoverScenarios();
+
+    expect(second).toBe(first);
+  });
+
+  it("invalidates the cache after clearCache()", async () => {
+    const loader = new ScenarioLoader(scenarioDir);
+
+    const first = await loader.discoverScenarios();
+    loader.clearCache();
+    const second = await loader.discoverScenarios();
+
+    expect(second).not.toBe(first);
+    expect(second).toEqual(first);
+  });
+
+  it("caches TypeScript transpilation so the file is only transpiled once", async () => {
+    const loader = new ScenarioLoader(scenarioDir);
+    const tsFile = resolve(scenarioDir, "delayed-element.ts");
+
+    await loader.loadFromFile(tsFile);
+    // A second load of the same file should hit the cache
+    await loader.loadFromFile(tsFile);
+
+    // Cache has exactly one entry (the file was transpiled once, not twice)
+    expect((loader as any)._transpileCache.size).toBe(1);
+    expect((loader as any)._transpileCache.has(tsFile)).toBe(true);
+  });
 });

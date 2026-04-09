@@ -15,6 +15,9 @@ import {
 const SUPPORTED_EXTENSIONS = new Set([".md", ".ts", ".js"]);
 
 export class ScenarioLoader {
+  private _scenariosCache: ScenarioDefinition[] | null = null;
+  private readonly _transpileCache = new Map<string, string>();
+
   constructor(private readonly scenarioDir: string) {}
 
   async discoverFiles(): Promise<string[]> {
@@ -29,8 +32,16 @@ export class ScenarioLoader {
   }
 
   async discoverScenarios(): Promise<ScenarioDefinition[]> {
+    if (this._scenariosCache) {
+      return this._scenariosCache;
+    }
     const files = await this.discoverFiles();
-    return Promise.all(files.map((file) => this.loadFromFile(file)));
+    this._scenariosCache = await Promise.all(files.map((file) => this.loadFromFile(file)));
+    return this._scenariosCache;
+  }
+
+  clearCache(): void {
+    this._scenariosCache = null;
   }
 
   async loadById(id: string): Promise<ScenarioDefinition | null> {
@@ -106,18 +117,24 @@ export class ScenarioLoader {
 
   private async loadTypeScriptScenario(filePath: string): Promise<ScenarioDefinition> {
     const raw = await readTextFile(filePath);
-    const transpiled = ts.transpileModule(raw, {
-      compilerOptions: {
-        module: ts.ModuleKind.CommonJS,
-        target: ts.ScriptTarget.ES2022,
-        esModuleInterop: true,
-      },
-      fileName: filePath,
-    });
+    let outputText = this._transpileCache.get(filePath);
+
+    if (!outputText) {
+      const transpiled = ts.transpileModule(raw, {
+        compilerOptions: {
+          module: ts.ModuleKind.CommonJS,
+          target: ts.ScriptTarget.ES2022,
+          esModuleInterop: true,
+        },
+        fileName: filePath,
+      });
+      outputText = transpiled.outputText;
+      this._transpileCache.set(filePath, outputText);
+    }
 
     const localRequire = createRequire(filePath);
     const module = { exports: {} as { default?: InlineScenarioInput } };
-    const wrapper = `(function (exports, require, module, __filename, __dirname) { ${transpiled.outputText}\n})`;
+    const wrapper = `(function (exports, require, module, __filename, __dirname) { ${outputText}\n})`;
     const script = new vm.Script(wrapper, { filename: filePath });
     const execute = script.runInThisContext() as (
       exports: object,

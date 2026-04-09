@@ -63,6 +63,14 @@ export function parseAnalyzeArgs(args: string[]): AnalyzeCliArgs {
     }
   }
 
+  if (input.runAll && (input.scenarioId ?? input.filePath)) {
+    throw new Error("--all cannot be combined with --scenario or --file.");
+  }
+
+  if (input.scenarioId && input.filePath) {
+    throw new Error("--scenario and --file cannot be combined.");
+  }
+
   return {
     input,
     asyncMode,

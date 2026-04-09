@@ -43,6 +43,18 @@ describe("adapter and entrypoint modules", () => {
     expect(isTerminalRunStatus("running")).toBe(false);
   });
 
+  it("rejects mutually exclusive CLI flag combinations", () => {
+    expect(() => parseAnalyzeArgs(["--all", "--scenario", "x"])).toThrow(
+      "--all cannot be combined with --scenario or --file.",
+    );
+    expect(() => parseAnalyzeArgs(["--all", "--file", "./x"])).toThrow(
+      "--all cannot be combined with --scenario or --file.",
+    );
+    expect(() => parseAnalyzeArgs(["--scenario", "x", "--file", "./y"])).toThrow(
+      "--scenario and --file cannot be combined.",
+    );
+  });
+
   it("prints usage", () => {
     const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
     printUsage();

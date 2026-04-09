@@ -238,11 +238,13 @@ export class AnalysisService {
     let persistQueue = Promise.resolve();
 
     const queuePersist = (applyUpdate: () => void): Promise<void> => {
-      persistQueue = persistQueue.then(async () => {
-        applyUpdate();
-        run.updatedAt = new Date().toISOString();
-        await this.runStore.save({ ...run });
-      });
+      persistQueue = persistQueue
+        .then(async () => {
+          applyUpdate();
+          run.updatedAt = new Date().toISOString();
+          await this.runStore.save({ ...run });
+        })
+        .catch(() => undefined);
 
       return persistQueue;
     };

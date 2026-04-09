@@ -4,6 +4,7 @@ import { buildFailurePrompt, buildSystemPrompt } from "./prompt";
 import { resolveProviderConfig } from "./provider-config";
 import { extractOpenAiContent, parseDiagnosisJson } from "./response-parser";
 import { FailureAnalyzer, OpenAiCompatibleResponse } from "./types";
+import { fetchWithRetry } from "./fetch-with-retry";
 
 export class OpenAiCompatibleAnalyzer implements FailureAnalyzer {
   constructor(
@@ -15,7 +16,7 @@ export class OpenAiCompatibleAnalyzer implements FailureAnalyzer {
     runtime: ResolvedAiRuntimeOptions,
   ): Promise<AIDiagnosis> {
     const providerConfig = resolveProviderConfig(this.config, runtime.provider);
-    const response = await fetch(
+    const response = await fetchWithRetry(
       `${providerConfig.baseUrl.replace(/\/$/, "")}/chat/completions`,
       {
         method: "POST",

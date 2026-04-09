@@ -14,6 +14,7 @@ import { MockAiAnalyzer } from "../../src/core/ai/mock-analyzer";
 import { OpenAiCompatibleAnalyzer } from "../../src/core/ai/openai-compatible-analyzer";
 import { AnthropicAnalyzer } from "../../src/core/ai/anthropic-analyzer";
 import { RoutedAiAnalyzer } from "../../src/core/ai-analyzer";
+import { fetchWithRetry } from "../../src/core/ai/fetch-with-retry";
 
 const baseInput: FailureAnalysisInput = {
   scenario: {
@@ -327,5 +328,63 @@ describe("AI layer", () => {
     await expect(
       router.analyze(baseInput, { provider: "unsupported", model: "x" }),
     ).rejects.toThrow("Unsupported AI provider");
+  });
+});
+
+describe("fetchWithRetry", () => {
+  beforeEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  it("returns the response on the first successful attempt", async () => {
+    const mockResponse = { ok: true, status: 200 } as Response;
+    jest.spyOn(globalThis, "fetch").mockResolvedValueOnce(mockResponse);
+
+    const result = await fetchWithRetry("https://example.com", { method: "POST" });
+
+    expect(result).toBe(mockResponse);
+  });
+
+  it("retries on network errors and succeeds on the third attempt", async () => {
+    jest.spyOn(global, "setTimeout").mockImplementation(((cb: TimerHandler) => {
+      if (typeof cb === "function") cb();
+      return 0 as never;
+    }) as unknown as typeof setTimeout);
+
+    const mockResponse = { ok: true, status: 200 } as Response;
+    const fetchSpy = jest.spyOn(globalThis, "fetch")
+      .mockRejectedValueOnce(new Error("network error"))
+      .mockRejectedValueOnce(new Error("network error"))
+      .mockResolvedValueOnce(mockResponse);
+
+    const result = await fetchWithRetry("https://example.com", { method: "GET" });
+
+    expect(result).toBe(mockResponse);
+    expect(fetchSpy).toHaveBeenCalledTimes(3);
+  });
+
+  it("throws the last error after all attempts fail", async () => {
+    jest.spyOn(global, "setTimeout").mockImplementation(((cb: TimerHandler) => {
+      if (typeof cb === "function") cb();
+      return 0 as never;
+    }) as unknown as typeof setTimeout);
+
+    jest.spyOn(globalThis, "fetch").mockRejectedValue(new Error("persistent failure"));
+
+    await expect(fetchWithRetry("https://example.com", {})).rejects.toThrow("persistent failure");
+  });
+
+  it("converts an AbortError into a timeout message", async () => {
+    jest.spyOn(global, "setTimeout").mockImplementation(((cb: TimerHandler) => {
+      if (typeof cb === "function") cb();
+      return 0 as never;
+    }) as unknown as typeof setTimeout);
+
+    const abortError = Object.assign(new Error("signal aborted"), { name: "AbortError" });
+    jest.spyOn(globalThis, "fetch").mockRejectedValue(abortError);
+
+    await expect(fetchWithRetry("https://example.com", {})).rejects.toThrow(
+      "AI request timed out after 30000ms.",
+    );
   });
 });

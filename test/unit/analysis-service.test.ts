@@ -396,4 +396,68 @@ describe("AnalysisService", () => {
 
     expect((await service.getRun(run.runId)).passed).toBe(1);
   });
+
+  it("continues processing when a queuePersist save fails mid-run", async () => {
+    const scenarios = [buildScenario("a"), buildScenario("b")];
+    let saveCallCount = 0;
+    let savedRun: AnalysisRun | undefined;
+    const runStore = {
+      save: jest.fn(async (run: AnalysisRun) => {
+        saveCallCount += 1;
+        // Fail on the 3rd save (first queuePersist update) to simulate a disk error;
+        // calls 1 and 2 are the initial "queued" and "running" direct saves.
+        if (saveCallCount === 3) {
+          throw new Error("disk write failed");
+        }
+
+        savedRun = run;
+        return run;
+      }),
+      getById: jest.fn(async () => savedRun!),
+    };
+
+    const service = new AnalysisService(
+      {
+        discoverScenarios: jest.fn(async () => scenarios),
+        loadById: jest.fn(),
+        loadFromFile: jest.fn(),
+        loadInline: jest.fn(),
+      } as never,
+      {
+        runFirstAttempt: jest.fn(async (scenario: ScenarioDefinition) => ({
+          scenarioId: scenario.id,
+          runId: `${scenario.id}-1`,
+          phase: "first_run",
+          status: "passed",
+          durationMs: 100,
+          timestamp: new Date().toISOString(),
+        })),
+        retry: jest.fn(),
+        close: jest.fn(),
+      } as never,
+      { analyze: jest.fn() } as never,
+      { validate: jest.fn() } as never,
+      {
+        save: jest.fn(async (report: AnalysisReport) => report),
+        getById: jest.fn(),
+      } as never,
+      runStore as never,
+      2,
+      { provider: "mock", model: "gpt-5.4" },
+    );
+
+    const run = await service.startRun({ runAll: true });
+
+    // Wait for run to reach a terminal state (should complete despite the save error)
+    let attempts = 0;
+    while (attempts < 50) {
+      const current = await service.getRun(run.runId);
+      if (current.status === "completed" || current.status === "failed") break;
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      attempts += 1;
+    }
+
+    const finalRun = await service.getRun(run.runId);
+    expect(["completed", "failed"]).toContain(finalRun.status);
+  });
 });

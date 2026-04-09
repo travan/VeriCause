@@ -4,6 +4,7 @@ import { buildFailurePrompt, buildSystemPrompt } from "./prompt";
 import { resolveProviderConfig } from "./provider-config";
 import { extractAnthropicContent, parseDiagnosisJson } from "./response-parser";
 import { AnthropicResponse, FailureAnalyzer } from "./types";
+import { fetchWithRetry } from "./fetch-with-retry";
 
 export class AnthropicAnalyzer implements FailureAnalyzer {
   constructor(
@@ -15,7 +16,7 @@ export class AnthropicAnalyzer implements FailureAnalyzer {
     runtime: ResolvedAiRuntimeOptions,
   ): Promise<AIDiagnosis> {
     const providerConfig = resolveProviderConfig(this.config, runtime.provider);
-    const response = await fetch(
+    const response = await fetchWithRetry(
       `${providerConfig.baseUrl.replace(/\/$/, "")}/messages`,
       {
         method: "POST",
