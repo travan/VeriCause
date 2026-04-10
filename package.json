@@ -1,6 +1,6 @@
 {
   "name": "ai-reliability-layer",
-  "version": "0.1.0",
+  "version": "0.0.1",
   "private": false,
   "description": "Validates AI failure analysis against Playwright runtime evidence. Includes a shared core, NestJS HTTP server, and CLI.",
   "keywords": [
