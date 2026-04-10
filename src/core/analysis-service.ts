@@ -1,4 +1,4 @@
-import { resolve } from "node:path";
+import { resolve, sep } from "node:path";
 
 import { RoutedAiAnalyzer } from "./ai-analyzer";
 import { PlaywrightExecutionEngine } from "./execution-engine";
@@ -16,6 +16,7 @@ import {
   RunAnalysisInput,
   ScenarioDefinition,
 } from "./types";
+import { AiRuntimeOptionsSchema } from "./schemas";
 
 export class AnalysisService {
   constructor(
@@ -105,7 +106,12 @@ export class AnalysisService {
     }
 
     if (input.filePath) {
-      return this.scenarioLoader.loadFromFile(resolve(input.filePath));
+      const absolutePath = resolve(input.filePath);
+      const projectRoot = resolve(process.cwd());
+      if (!absolutePath.startsWith(projectRoot + sep)) {
+        throw new Error("filePath must be within the project directory.");
+      }
+      return this.scenarioLoader.loadFromFile(absolutePath);
     }
 
     if (input.scenarioId) {
@@ -187,9 +193,10 @@ export class AnalysisService {
   }
 
   private resolveAiRuntime(input?: AiRuntimeOptions): ResolvedAiRuntimeOptions {
+    const validated = AiRuntimeOptionsSchema.parse(input ?? {});
     return {
-      provider: input?.provider?.trim() || this.defaultAiRuntime.provider,
-      model: input?.model?.trim() || this.defaultAiRuntime.model,
+      provider: validated.provider || this.defaultAiRuntime.provider,
+      model: validated.model || this.defaultAiRuntime.model,
     };
   }
 

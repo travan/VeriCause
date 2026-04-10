@@ -1,6 +1,7 @@
 import { join } from "node:path";
 
 import { readJsonFile, writeJsonFile } from "./fs";
+import { SAFE_ID_RE } from "./schemas";
 import { AnalysisRun } from "./types";
 
 export class FileAnalysisRunStore {
@@ -16,6 +17,9 @@ export class FileAnalysisRunStore {
   }
 
   private pathFor(runId: string): string {
+    if (!SAFE_ID_RE.test(runId)) {
+      throw new Error(`Invalid run ID: '${runId}'`);
+    }
     return join(this.artifactsDir, "jobs", `${runId}.json`);
   }
 }

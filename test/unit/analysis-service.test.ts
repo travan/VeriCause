@@ -460,4 +460,40 @@ describe("AnalysisService", () => {
     const finalRun = await service.getRun(run.runId);
     expect(["completed", "failed"]).toContain(finalRun.status);
   });
+
+  it("rejects filePath outside the project directory", async () => {
+    const service = new AnalysisService(
+      { discoverScenarios: jest.fn(), loadById: jest.fn(), loadFromFile: jest.fn(), loadInline: jest.fn() } as never,
+      { close: jest.fn() } as never,
+      {} as never,
+      {} as never,
+      { save: jest.fn(), getById: jest.fn() } as never,
+      { save: jest.fn(), getById: jest.fn() } as never,
+      1,
+      { provider: "mock", model: "gpt-5.4" },
+    );
+
+    await expect(service.run({ filePath: "/etc/passwd" })).rejects.toThrow(
+      "filePath must be within the project directory.",
+    );
+    await expect(service.run({ filePath: "../../outside.ts" })).rejects.toThrow(
+      "filePath must be within the project directory.",
+    );
+  });
+
+  it("rejects invalid provider and model values", async () => {
+    const service = new AnalysisService(
+      { discoverScenarios: jest.fn(), loadById: jest.fn(), loadFromFile: jest.fn(), loadInline: jest.fn() } as never,
+      { close: jest.fn() } as never,
+      {} as never,
+      {} as never,
+      { save: jest.fn(), getById: jest.fn() } as never,
+      { save: jest.fn(), getById: jest.fn() } as never,
+      1,
+      { provider: "mock", model: "gpt-5.4" },
+    );
+
+    await expect(service.run({ scenarioId: "x", ai: { provider: "EVIL\r\nHeader: injected" } })).rejects.toThrow();
+    await expect(service.run({ scenarioId: "x", ai: { model: "a".repeat(201) } })).rejects.toThrow();
+  });
 });

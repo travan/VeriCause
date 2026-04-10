@@ -11,7 +11,12 @@ import {
 } from "../../src/core/fs";
 import { FileReportStore } from "../../src/core/report-store";
 import { FileAnalysisRunStore } from "../../src/core/run-store";
-import { AIDiagnosisSchema, InlineScenarioInputSchema, ScenarioDefinitionSchema } from "../../src/core/schemas";
+import {
+  AIDiagnosisSchema,
+  AiRuntimeOptionsSchema,
+  InlineScenarioInputSchema,
+  ScenarioDefinitionSchema,
+} from "../../src/core/schemas";
 import { resolveCoreConfig } from "../../src/core/config";
 
 describe("core support modules", () => {
@@ -146,5 +151,93 @@ describe("core support modules", () => {
         summary: "bad",
       }),
     ).toThrow();
+  });
+
+  it("rejects unsafe AI runtime options", () => {
+    // Control characters in model (HTTP header / log injection)
+    expect(() =>
+      AiRuntimeOptionsSchema.parse({ model: "gpt-4\r\nX-Injected: evil" }),
+    ).toThrow();
+
+    // Newline in provider
+    expect(() =>
+      AiRuntimeOptionsSchema.parse({ provider: "mock\ninjected" }),
+    ).toThrow();
+
+    // Provider with uppercase letters
+    expect(() =>
+      AiRuntimeOptionsSchema.parse({ provider: "OpenAI" }),
+    ).toThrow();
+
+    // Model exceeding max length
+    expect(() =>
+      AiRuntimeOptionsSchema.parse({ model: "a".repeat(201) }),
+    ).toThrow();
+
+    // Empty-ish strings are trimmed to "" and allowed (fall back to default later)
+    expect(() =>
+      AiRuntimeOptionsSchema.parse({ provider: "  ", model: "" }),
+    ).not.toThrow();
+
+    // Valid values pass
+    expect(() =>
+      AiRuntimeOptionsSchema.parse({ provider: "openai-compatible", model: "gpt-5.4" }),
+    ).not.toThrow();
+  });
+
+  it("rejects unsafe inline scenario inputs", () => {
+    // SSRF: file:// protocol blocked
+    expect(() =>
+      InlineScenarioInputSchema.parse({ url: "file:///etc/passwd", selector: "#x" }),
+    ).toThrow("URL must use http:, https:, or fixture: protocol");
+
+    // SSRF: javascript: blocked
+    expect(() =>
+      InlineScenarioInputSchema.parse({ url: "javascript:alert(1)", selector: "#x" }),
+    ).toThrow();
+
+    // fixture:// allowed (used in tests)
+    expect(() =>
+      InlineScenarioInputSchema.parse({ url: "fixture://invalid-selector", selector: "#x" }),
+    ).not.toThrow();
+
+    // Path traversal in id
+    expect(() =>
+      InlineScenarioInputSchema.parse({ id: "../../etc/passwd", url: "https://example.com", selector: "#x" }),
+    ).toThrow("id must be alphanumeric");
+
+    // Null byte in id
+    expect(() =>
+      InlineScenarioInputSchema.parse({ id: "valid\x00id", url: "https://example.com", selector: "#x" }),
+    ).toThrow();
+  });
+
+  it("rejects unsafe report and run IDs in stores", async () => {
+    const artifactsDir = await mkdtemp(join(tmpdir(), "ai-reliability-store-sec-"));
+
+    try {
+      const reportStore = new FileReportStore(artifactsDir);
+      const runStore = new FileAnalysisRunStore(artifactsDir);
+
+      // Path traversal via reportId
+      await expect(reportStore.getById("../../etc/passwd")).rejects.toThrow(
+        "Invalid report ID",
+      );
+      await expect(reportStore.save({
+        reportId: "../escape",
+      } as never)).rejects.toThrow("Invalid report ID");
+
+      // Path traversal via runId
+      await expect(runStore.getById("../../../root")).rejects.toThrow(
+        "Invalid run ID",
+      );
+
+      // Null byte in ID
+      await expect(reportStore.getById("report\x00evil")).rejects.toThrow(
+        "Invalid report ID",
+      );
+    } finally {
+      await rm(artifactsDir, { recursive: true, force: true });
+    }
   });
 });
