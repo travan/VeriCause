@@ -58,7 +58,7 @@ describe("adapter and entrypoint modules", () => {
   it("prints usage", () => {
     const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
     printUsage();
-    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining("npm run cli -- discover"));
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining("npx ai-reliability-layer"));
   });
 
   it("waits for runs until completion", async () => {
