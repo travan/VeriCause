@@ -1,10 +1,38 @@
 {
   "name": "ai-reliability-layer",
   "version": "0.1.0",
-  "private": true,
-  "description": "Shared core, NestJS server, and CLI for validating AI failure analysis against runtime evidence.",
+  "private": false,
+  "description": "Validates AI failure analysis against Playwright runtime evidence. Includes a shared core, NestJS HTTP server, and CLI.",
+  "keywords": [
+    "ai",
+    "reliability",
+    "playwright",
+    "automation",
+    "testing",
+    "llm",
+    "validation"
+  ],
+  "license": "MIT",
+  "main": "dist/core/runtime.js",
+  "exports": {
+    ".": "./dist/core/runtime.js",
+    "./server": "./dist/server/main.js",
+    "./cli": "./dist/cli/main.js"
+  },
+  "bin": {
+    "ai-reliability-layer": "dist/cli/main.js"
+  },
+  "files": [
+    "dist/",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
   "scripts": {
     "build": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\" && tsc -p tsconfig.build.json --incremental false",
+    "prepare": "npm run build",
     "check": "tsc --noEmit",
     "test:unit": "jest --config jest.config.cjs --runInBand --testPathPattern=test/unit",
     "test:integration": "jest --config jest.config.cjs --runInBand --testPathPattern=test/integration",

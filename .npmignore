@@ -1,0 +1,29 @@
+# Source & tests
+src/
+test/
+
+# Development scenarios & fixtures
+scenarios/
+fixtures/
+
+# Build / test artefacts
+artifacts/
+coverage/
+*.tsbuildinfo
+
+# Config files not needed at runtime
+jest.config.cjs
+tsconfig*.json
+
+# CI / VCS
+.github/
+.gitignore
+.gitattributes
+
+# Environment files
+.env
+.env.*
+
+# Editor
+.vscode/
+.idea/

@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 import { createCoreRuntime } from "../core/runtime";
 import { AnalysisRunStatus, RunAnalysisInput } from "../core/types";
 
@@ -7,13 +8,64 @@ type AnalyzeCliArgs = {
 };
 
 export function printUsage(): void {
-  console.log(`Usage:
-  npm run cli -- discover
-  npm run cli -- analyze --all
-  npm run cli -- analyze --all --async
-  npm run cli -- analyze --scenario <id>
-  npm run cli -- analyze --file <path>
-  npm run cli -- analyze --file <path> --provider mock --model gpt-5.4`);
+  console.log(`
+ai-reliability-layer — validate AI failure analysis against runtime evidence
+
+USAGE
+  npx ai-reliability-layer <command> [options]
+
+COMMANDS
+  discover                   List all scenario files found in SCENARIO_DIR
+  analyze                    Run one or more scenarios and print a report
+
+ANALYZE OPTIONS
+  --all                      Run every discovered scenario
+  --scenario <id>            Run a single scenario by its ID
+  --file <path>              Run a single scenario from a file path
+  --async                    Start an async run and stream progress until done
+  --provider <name>          Override the AI provider for this run
+  --model <name>             Override the AI model for this run
+  --help, -h                 Show this help message
+
+EXAMPLES
+  # Discover all scenarios
+  npx ai-reliability-layer discover
+
+  # Analyse one scenario (by ID)
+  npx ai-reliability-layer analyze --scenario login-button
+
+  # Analyse a specific file
+  npx ai-reliability-layer analyze --file ./scenarios/login-button.ts
+
+  # Analyse everything in parallel
+  npx ai-reliability-layer analyze --all
+
+  # Async mode — streams progress, prints final JSON when done
+  npx ai-reliability-layer analyze --all --async
+
+  # Override provider/model for a single run
+  npx ai-reliability-layer analyze --scenario login-button --provider claude --model claude-3-7-sonnet
+
+ENVIRONMENT VARIABLES
+  AI_PROVIDER              Default provider  (default: mock)
+  AI_MODEL                 Default model     (default: mock-reliability-v1)
+  OPENAI_BASE_URL          Base URL for OpenAI or compatible providers
+  OPENAI_API_KEY           API key for OpenAI or compatible providers
+  ANTHROPIC_API_KEY        API key for Anthropic / Claude
+  AI_<PROVIDER>_BASE_URL   Per-provider base URL  e.g. AI_GROK_BASE_URL
+  AI_<PROVIDER>_API_KEY    Per-provider API key   e.g. AI_GROK_API_KEY
+  SCENARIO_DIR             Directory scanned for scenarios  (default: scenarios)
+  BASE_OUTPUT_DIR          Artifacts output root            (default: artifacts)
+  RUN_CONCURRENCY          Parallel scenario limit          (default: cpus/2)
+  ENABLE_TRACE             Save Playwright traces           (default: false)
+
+SUPPORTED PROVIDERS
+  mock (built-in, no key needed)
+  openai · claude/anthropic · grok · gemini · deepseek · ollama · lmstudio · local
+
+DOCS
+  https://github.com/your-org/ai-reliability-layer#readme
+`);
 }
 
 export function parseAnalyzeArgs(args: string[]): AnalyzeCliArgs {
@@ -111,9 +163,9 @@ export async function main(): Promise<void> {
   const runtime = createCoreRuntime();
 
   try {
-    if (!command) {
+    if (!command || command === "--help" || command === "-h") {
       printUsage();
-      process.exitCode = 1;
+      if (!command) process.exitCode = 1;
       return;
     }
 
@@ -124,6 +176,11 @@ export async function main(): Promise<void> {
     }
 
     if (command === "analyze") {
+      if (args.includes("--help") || args.includes("-h")) {
+        printUsage();
+        return;
+      }
+
       const { input, asyncMode } = parseAnalyzeArgs(args);
 
       if (asyncMode) {
