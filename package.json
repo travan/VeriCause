@@ -12,6 +12,10 @@
     "llm",
     "validation"
   ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/travan/VeriCause.git"
+  },
   "license": "MIT",
   "main": "dist/core/runtime.js",
   "types": "dist/core/runtime.d.ts",
