@@ -6,11 +6,24 @@ import { ModuleMetadata } from "@nestjs/common/interfaces";
 import { MODULE_METADATA } from "@nestjs/common/constants";
 
 import { AnalysisController } from "../../src/server/controllers/analysis.controller";
+import { EvaluationController } from "../../src/server/controllers/evaluation.controller";
+import { GuardrailController } from "../../src/server/controllers/guardrail.controller";
+import { VerificationController } from "../../src/server/controllers/verification.controller";
 import { ScenariosController } from "../../src/server/controllers/scenarios.controller";
 import { CORE_RUNTIME, CoreRuntimeProvider } from "../../src/server/core-runtime.provider";
 import { ServerModule } from "../../src/server/server.module";
 import { createCoreRuntime } from "../../src/core/runtime";
-import { isTerminalRunStatus, main, parseAnalyzeArgs, printUsage, waitForRun } from "../../src/cli/main";
+import {
+  isTerminalRunStatus,
+  main,
+  parseAnalyzeArgs,
+  parseCompareArgs,
+  parseEvaluateArgs,
+  parseGuardArgs,
+  parseVerifyArgs,
+  printUsage,
+  waitForRun,
+} from "../../src/cli/main";
 
 const actualRuntimeModule = jest.requireActual("../../src/core/runtime") as typeof import("../../src/core/runtime");
 
@@ -53,6 +66,41 @@ describe("adapter and entrypoint modules", () => {
     expect(() => parseAnalyzeArgs(["--scenario", "x", "--file", "./y"])).toThrow(
       "--scenario and --file cannot be combined.",
     );
+    expect(parseEvaluateArgs(["--dataset", "./dataset.json"])).toEqual({
+      datasetPath: "./dataset.json",
+      thresholds: {},
+    });
+    expect(parseEvaluateArgs([
+      "--dataset", "./dataset.json",
+      "--min-decision-accuracy", "0.95",
+      "--max-false-accept-rate", "0.01",
+    ])).toEqual({
+      datasetPath: "./dataset.json",
+      thresholds: { minDecisionAccuracy: 0.95, maxFalseAcceptRate: 0.01 },
+    });
+    expect(() => parseEvaluateArgs([])).toThrow("evaluate requires --dataset <path>.");
+    expect(() => parseEvaluateArgs([
+      "--dataset", "./dataset.json", "--max-inconclusive-rate", "2",
+    ])).toThrow();
+    expect(parseCompareArgs([
+      "--baseline", "evaluation-1", "--candidate", "evaluation-2",
+    ])).toEqual({
+      baselineEvaluationId: "evaluation-1",
+      candidateEvaluationId: "evaluation-2",
+    });
+    expect(() => parseCompareArgs(["--baseline", "evaluation-1"])).toThrow(
+      "compare requires",
+    );
+    expect(parseGuardArgs(["--report", "report-1", "--risk", "high"])).toEqual({
+      reportId: "report-1",
+      risk: "high",
+    });
+    expect(() => parseGuardArgs(["--report", "report-1", "--risk", "unsafe"]))
+      .toThrow();
+    expect(parseVerifyArgs(["--input", "./verification/api-status.json"])).toEqual({
+      inputPath: "./verification/api-status.json",
+    });
+    expect(() => parseVerifyArgs([])).toThrow("verify requires --input <path>");
   });
 
   it("prints usage", () => {
@@ -137,7 +185,13 @@ describe("adapter and entrypoint modules", () => {
       ServerModule,
     ) as ModuleMetadata["providers"];
 
-    expect(controllers).toEqual([ScenariosController, AnalysisController]);
+    expect(controllers).toEqual([
+      ScenariosController,
+      AnalysisController,
+      EvaluationController,
+      GuardrailController,
+      VerificationController,
+    ]);
     expect(providers).toEqual([CoreRuntimeProvider]);
   });
 
@@ -212,6 +266,84 @@ describe("adapter and entrypoint modules", () => {
     });
   });
 
+  it("runs evaluation datasets through the evaluation controller", async () => {
+    const evaluationService = {
+      run: jest.fn(async (cases, thresholds) => ({ cases, thresholds })),
+      getById: jest.fn(async (evaluationId) => ({ evaluationId })),
+      compare: jest.fn(async (baselineEvaluationId, candidateEvaluationId) => ({
+        baselineEvaluationId,
+        candidateEvaluationId,
+      })),
+    };
+    const controller = new EvaluationController({ evaluationService } as never);
+    const cases = [{
+      id: "case-1",
+      input: { scenarioId: "invalid-selector" },
+      groundTruth: { value: "invalid_selector" as const, source: "fixture" },
+    }];
+
+    await expect(controller.run({ cases })).resolves.toEqual({
+      status: "completed",
+      result: { cases, thresholds: {} },
+    });
+    await expect(controller.getById("evaluation-1")).resolves.toEqual({
+      result: { evaluationId: "evaluation-1" },
+    });
+    await expect(controller.compare({
+      baselineEvaluationId: "evaluation-1",
+      candidateEvaluationId: "evaluation-2",
+    })).resolves.toEqual({
+      result: {
+        baselineEvaluationId: "evaluation-1",
+        candidateEvaluationId: "evaluation-2",
+      },
+    });
+  });
+
+  it("applies and reads guardrail decisions through the controller", async () => {
+    const guardrailService = {
+      decide: jest.fn(async (input) => ({ decisionId: "decision-1", ...input })),
+      getById: jest.fn(async (decisionId) => ({ decisionId })),
+    };
+    const controller = new GuardrailController({ guardrailService } as never);
+
+    await expect(controller.decide({ reportId: "report-1", risk: "high" }))
+      .resolves.toEqual({
+        decision: { decisionId: "decision-1", reportId: "report-1", risk: "high" },
+      });
+    await expect(controller.getById("decision-1")).resolves.toEqual({
+      decision: { decisionId: "decision-1" },
+    });
+  });
+
+  it("verifies structured runtime evidence through the controller", () => {
+    const runtimeVerificationService = { verify: jest.fn((input) => ({ input })) };
+    const controller = new VerificationController({ runtimeVerificationService } as never);
+    const input = {
+      target: "api" as const,
+      claim: {
+        id: "claim-1",
+        subject: "api",
+        predicate: "status_code",
+        expected: 200,
+        confidence: 0.9,
+        rationale: "test",
+        source: "ai" as const,
+      },
+      evidence: {
+        items: [{
+          id: "observation-1",
+          type: "api.status_code",
+          value: 200,
+          source: "test",
+          observedAt: "2026-08-06T00:00:00.000Z",
+        }],
+      },
+    };
+
+    expect(controller.run(input)).toEqual({ result: { input } });
+  });
+
   it("runs CLI main branches", async () => {
     const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
     const errorSpy = jest.spyOn(console, "error").mockImplementation(() => undefined);
@@ -230,6 +362,15 @@ describe("adapter and entrypoint modules", () => {
           passed: 1,
           pending: 0,
         })),
+      },
+      evaluationService: {
+        run: jest.fn(async () => ({ evaluationId: "evaluation-1" })),
+      },
+      guardrailService: {
+        decide: jest.fn(async () => ({ action: "allow" })),
+      },
+      runtimeVerificationService: {
+        verify: jest.fn(() => ({ coreVerdict: { status: "supported" } })),
       },
       close: jest.fn(async () => undefined),
     };

@@ -1,0 +1,22 @@
+{
+  "target": "database",
+  "claim": {
+    "id": "database-rows-claim",
+    "subject": "database",
+    "predicate": "affected_rows",
+    "operator": "gte",
+    "expected": 1,
+    "confidence": 0.9,
+    "rationale": "The update should affect at least one row.",
+    "source": "ai"
+  },
+  "evidence": {
+    "items": [{
+      "id": "database-rows-observation",
+      "type": "database.affected_rows",
+      "value": 3,
+      "source": "database-driver",
+      "observedAt": "2026-08-06T00:00:00.000Z"
+    }]
+  }
+}

@@ -1,11 +1,85 @@
 #!/usr/bin/env node
+import { resolve } from "node:path";
+
 import { createCoreRuntime } from "../core/runtime";
 import { AnalysisRunStatus, RunAnalysisInput } from "../core/types";
+import { EvaluationThresholds } from "../core/domain/evaluation";
+import { readJsonFile } from "../core/fs";
+import {
+  EvaluationDatasetSchema,
+  EvaluationThresholdsSchema,
+  GuardReportInputSchema,
+  RuntimeVerificationInputSchema,
+} from "../core/schemas";
 
 type AnalyzeCliArgs = {
   input: RunAnalysisInput;
   asyncMode: boolean;
 };
+
+export function parseEvaluateArgs(args: string[]): {
+  datasetPath: string;
+  thresholds: EvaluationThresholds;
+} {
+  const datasetIndex = args.indexOf("--dataset");
+  const datasetPath = datasetIndex >= 0 ? args[datasetIndex + 1] : undefined;
+
+  if (!datasetPath) {
+    throw new Error("evaluate requires --dataset <path>.");
+  }
+
+  const thresholdFlags: Record<string, keyof EvaluationThresholds> = {
+    "--min-claim-accuracy": "minClaimAccuracy",
+    "--min-verifier-accuracy": "minVerifierAccuracy",
+    "--min-decision-accuracy": "minDecisionAccuracy",
+    "--max-false-accept-rate": "maxFalseAcceptRate",
+    "--max-false-override-rate": "maxFalseOverrideRate",
+    "--max-inconclusive-rate": "maxInconclusiveRate",
+    "--max-brier-score": "maxBrierScore",
+  };
+  const thresholds: EvaluationThresholds = {};
+
+  for (const [flag, key] of Object.entries(thresholdFlags)) {
+    const index = args.indexOf(flag);
+    if (index >= 0) thresholds[key] = Number(args[index + 1]);
+  }
+
+  return {
+    datasetPath,
+    thresholds: EvaluationThresholdsSchema.parse(thresholds),
+  };
+}
+
+export function parseCompareArgs(args: string[]): {
+  baselineEvaluationId: string;
+  candidateEvaluationId: string;
+} {
+  const baselineIndex = args.indexOf("--baseline");
+  const candidateIndex = args.indexOf("--candidate");
+  const baselineEvaluationId = baselineIndex >= 0 ? args[baselineIndex + 1] : undefined;
+  const candidateEvaluationId = candidateIndex >= 0 ? args[candidateIndex + 1] : undefined;
+
+  if (!baselineEvaluationId || !candidateEvaluationId) {
+    throw new Error("compare requires --baseline <id> and --candidate <id>.");
+  }
+  return { baselineEvaluationId, candidateEvaluationId };
+}
+
+export function parseGuardArgs(args: string[]) {
+  const reportIndex = args.indexOf("--report");
+  const riskIndex = args.indexOf("--risk");
+  return GuardReportInputSchema.parse({
+    reportId: reportIndex >= 0 ? args[reportIndex + 1] : undefined,
+    risk: riskIndex >= 0 ? args[riskIndex + 1] : undefined,
+  });
+}
+
+export function parseVerifyArgs(args: string[]): { inputPath: string } {
+  const inputIndex = args.indexOf("--input");
+  const inputPath = inputIndex >= 0 ? args[inputIndex + 1] : undefined;
+  if (!inputPath) throw new Error("verify requires --input <path>.");
+  return { inputPath };
+}
 
 export function printUsage(): void {
   console.log(`
@@ -17,6 +91,10 @@ USAGE
 COMMANDS
   discover                   List all scenario files found in SCENARIO_DIR
   analyze                    Run one or more scenarios and print a report
+  evaluate                   Run a ground-truth evaluation dataset
+  compare                    Compare two persisted evaluation runs
+  guard                      Apply a runtime policy to an analysis report
+  verify                     Verify API, shell, database, or tool evidence
 
 ANALYZE OPTIONS
   --all                      Run every discovered scenario
@@ -26,6 +104,23 @@ ANALYZE OPTIONS
   --provider <name>          Override the AI provider for this run
   --model <name>             Override the AI model for this run
   --help, -h                 Show this help message
+
+EVALUATE OPTIONS
+  --dataset <path>           JSON file containing evaluation cases and ground truth
+  --min-decision-accuracy N  Fail the quality gate below this accuracy (0..1)
+  --max-false-accept-rate N  Fail the quality gate above this rate (0..1)
+  --max-inconclusive-rate N  Fail the quality gate above this rate (0..1)
+
+COMPARE OPTIONS
+  --baseline <id>            Baseline evaluation ID
+  --candidate <id>           Candidate evaluation ID
+
+GUARD OPTIONS
+  --report <id>              Analysis report containing a CoreVerdict
+  --risk <level>             low | medium | high | critical
+
+VERIFY OPTIONS
+  --input <path>             JSON claim and runtime evidence bundle
 
 EXAMPLES
   # Discover all scenarios
@@ -45,6 +140,18 @@ EXAMPLES
 
   # Override provider/model for a single run
   npx ai-reliability-layer analyze --scenario login-button --provider claude --model claude-3-7-sonnet
+
+  # Evaluate a ground-truth dataset
+  npx ai-reliability-layer evaluate --dataset ./evaluation/dataset.json
+
+  # Compare a candidate evaluation against a baseline
+  npx ai-reliability-layer compare --baseline evaluation-1 --candidate evaluation-2
+
+  # Apply the default runtime guardrail policy
+  npx ai-reliability-layer guard --report report-1 --risk high
+
+  # Verify evidence collected by a non-browser executor
+  npx ai-reliability-layer verify --input ./verification/api-status.json
 
 ENVIRONMENT VARIABLES
   AI_PROVIDER              Default provider  (default: mock)
@@ -193,6 +300,52 @@ export async function main(): Promise<void> {
       }
 
       const result = await runtime.analysisService.run(input);
+      console.log(JSON.stringify({ status: "completed", result }, null, 2));
+      return;
+    }
+
+    if (command === "evaluate") {
+      if (args.includes("--help") || args.includes("-h")) {
+        printUsage();
+        return;
+      }
+
+      const { datasetPath, thresholds } = parseEvaluateArgs(args);
+      const dataset = EvaluationDatasetSchema.parse(
+        await readJsonFile<unknown>(resolve(datasetPath)),
+      );
+      const result = await runtime.evaluationService.run(dataset, thresholds);
+      console.log(JSON.stringify({ status: "completed", result }, null, 2));
+      if (result.qualityGate.status === "failed") process.exitCode = 2;
+      return;
+    }
+
+    if (command === "compare") {
+      const { baselineEvaluationId, candidateEvaluationId } = parseCompareArgs(args);
+      const result = await runtime.evaluationService.compare(
+        baselineEvaluationId,
+        candidateEvaluationId,
+      );
+      console.log(JSON.stringify({ status: "completed", result }, null, 2));
+      if (result.status === "regressed") process.exitCode = 2;
+      return;
+    }
+
+    if (command === "guard") {
+      const decision = await runtime.guardrailService.decide(parseGuardArgs(args));
+      console.log(JSON.stringify({ status: "completed", decision }, null, 2));
+      if (decision.action === "block" || decision.action === "escalate") {
+        process.exitCode = 2;
+      }
+      return;
+    }
+
+    if (command === "verify") {
+      const { inputPath } = parseVerifyArgs(args);
+      const input = RuntimeVerificationInputSchema.parse(
+        await readJsonFile<unknown>(resolve(inputPath)),
+      );
+      const result = runtime.runtimeVerificationService.verify(input);
       console.log(JSON.stringify({ status: "completed", result }, null, 2));
       return;
     }

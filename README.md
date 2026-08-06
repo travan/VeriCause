@@ -24,6 +24,53 @@ A **verdict** can be:
 | `override_ai` | Evidence contradicts the prediction |
 | `needs_more_evidence` | Inconclusive — actual cause is `unknown` |
 
+### Shared verification core
+
+Browser automation is the first evidence source, not a boundary of the core model. Every
+analysis is normalized into the same pipeline:
+
+```text
+VerificationClaim -> EvidenceBundle -> CoreVerdict
+```
+
+- `VerificationClaim` describes a testable assertion, its source, rationale, and confidence.
+- `EvidenceBundle` contains timestamped observations with stable IDs and provenance.
+- `CoreVerdict` is `supported`, `contradicted`, or `inconclusive`, and references the
+  exact evidence used to reach that result.
+
+The existing browser-oriented `aiDiagnosis`, `validationEvidence`, and `verdict` fields
+remain available for compatibility. Reports also expose `claim`, `evidence`, and
+`coreVerdict` for consumers building evaluation harnesses or runtime policies.
+
+### Pipeline tracing and errors
+
+Each completed analysis report contains `stageEvents` for:
+
+```text
+first_execution -> ai_analysis -> retry_execution
+  -> evidence_collection -> claim_verification
+```
+
+Every stage emits `started` and `completed` events with timestamps and duration. A browser
+scenario returning a failed execution is recorded as `failureCategory: "target"`; it is
+runtime evidence, not a failure of the reliability system.
+
+Thrown pipeline failures use `AnalysisPipelineError` with a structured payload:
+
+```json
+{
+  "code": "AI_ANALYSIS_FAILED",
+  "category": "analysis",
+  "stage": "ai_analysis",
+  "message": "Pipeline stage 'ai_analysis' failed: provider unavailable",
+  "retryable": true,
+  "cause": "provider unavailable"
+}
+```
+
+Error categories are `target`, `analysis`, and `system`. Async runs retain the legacy
+string `errors` array and additionally expose `structuredErrors` for machine processing.
+
 ---
 
 ## Requirements
@@ -108,6 +155,61 @@ npx ai-reliability-layer analyze --scenario login-button --provider claude --mod
 npx ai-reliability-layer discover
 ```
 
+### Evaluate against ground truth
+
+An evaluation dataset contains single-scenario inputs paired with known causes:
+
+```json
+[
+  {
+    "id": "invalid-selector-ground-truth",
+    "input": { "scenarioId": "invalid-selector" },
+    "groundTruth": { "value": "invalid_selector", "source": "fixture" }
+  }
+]
+```
+
+Run the bundled fixture dataset:
+
+```bash
+npx ai-reliability-layer evaluate --dataset ./evaluation/browser-fixtures.json
+```
+
+Use quality gates in CI (all rates are between `0` and `1`):
+
+```bash
+npx ai-reliability-layer evaluate \
+  --dataset ./evaluation/browser-fixtures.json \
+  --min-decision-accuracy 0.95 \
+  --max-false-accept-rate 0.01 \
+  --max-inconclusive-rate 0.05
+```
+
+The CLI exits with code `2` when a quality gate fails. Evaluation reports are persisted
+under `artifacts/evaluations/` and can be retrieved through `GET /evaluation/:evaluationId`.
+
+Compare a candidate evaluation with a persisted baseline:
+
+```bash
+npx ai-reliability-layer compare \
+  --baseline evaluation-1786000360046 \
+  --candidate evaluation-1786000593554
+```
+
+The comparison is direction-aware: higher accuracy is better, while lower false-decision,
+inconclusive, and Brier rates are better. Confidence changes are informational. The CLI
+exits with code `2` when the candidate contains any regression.
+
+Evaluation reports separate three measurements:
+
+- `claimAccuracy`: whether the AI claim matches ground truth.
+- `verifierAccuracy`: whether runtime verification derives the ground truth.
+- `decisionAccuracy`: whether the verifier correctly supports or contradicts the claim.
+
+Safety-oriented metrics include `falseAcceptRate`, `falseOverrideRate`, and
+`inconclusiveRate`. `brierScore` measures confidence calibration (lower is better),
+while `averageConfidence` helps detect systematically over- or under-confident models.
+
 ### 4. Run via Node.js API
 
 ```ts
@@ -157,6 +259,99 @@ Default port is `3000`. Override with `PORT=8080 npm run start:server`.
 ## HTTP API
 
 All requests and responses use `application/json`.
+
+### POST /evaluation/run
+
+Runs a ground-truth dataset through the same evaluation engine exposed by the SDK and CLI.
+
+```bash
+curl -X POST http://localhost:3000/evaluation/run \
+  -H "content-type: application/json" \
+  --data '{"cases":[{"id":"invalid-selector-ground-truth","input":{"scenarioId":"invalid-selector"},"groundTruth":{"value":"invalid_selector","source":"fixture"}}],"thresholds":{"minDecisionAccuracy":0.95,"maxFalseAcceptRate":0.01}}'
+```
+
+### POST /evaluation/compare
+
+```json
+{
+  "baselineEvaluationId": "evaluation-1",
+  "candidateEvaluationId": "evaluation-2"
+}
+```
+
+## Runtime guardrail
+
+The guardrail maps an evidence-backed `CoreVerdict` to an operational decision:
+
+| Core verdict | Default action |
+|---|---|
+| `supported` | `allow` |
+| `contradicted` | `block` |
+| `inconclusive`, low/medium risk | `retry` |
+| `inconclusive`, high risk | `escalate` |
+| `inconclusive`, critical risk | `block` |
+
+Apply the default policy to a persisted analysis report:
+
+```bash
+npx ai-reliability-layer guard \
+  --report invalid-selector-1786000590030 \
+  --risk high
+```
+
+The SDK also accepts a `CoreVerdict` directly through
+`runtime.guardrailService.decideVerdict(...)`. Decisions are persisted under
+`artifacts/guardrail-decisions/` for audit.
+
+### POST /guardrail/decide
+
+```json
+{
+  "reportId": "invalid-selector-1786000590030",
+  "risk": "high",
+  "proposedAction": {
+    "type": "browser.click",
+    "description": "Click the purchase button"
+  },
+  "policy": {
+    "id": "checkout-strict-v1",
+    "minEvidenceCount": 3,
+    "inconclusiveActions": { "high": "block" }
+  }
+}
+```
+
+Retrieve an audited decision with `GET /guardrail/decisions/:decisionId`. The guard CLI
+exits with code `2` for `block` and `escalate` decisions.
+
+## Non-browser runtime verification
+
+API clients, command runners, database drivers, and agent runtimes can submit observations
+without giving this library authority to execute the underlying action. Supported targets:
+
+| Target | Example predicate | Evidence type |
+|---|---|---|
+| `api` | `status_code` | `api.status_code` |
+| `shell` | `exit_code` | `shell.exit_code` |
+| `database` | `affected_rows` | `database.affected_rows` |
+| `tool` | `result_status` | `tool.result_status` |
+
+Claims support `equals`, `contains`, `one_of`, `gte`, and `lte`. The matching evidence
+type is always `<claim.subject>.<claim.predicate>`. Missing matching evidence produces an
+`inconclusive` verdict.
+
+Run one of the bundled examples:
+
+```bash
+npx ai-reliability-layer verify --input ./verification/api-status.json
+npx ai-reliability-layer verify --input ./verification/shell-exit.json
+npx ai-reliability-layer verify --input ./verification/database-rows.json
+npx ai-reliability-layer verify --input ./verification/tool-result.json
+```
+
+HTTP consumers can use `POST /verification/run`. SDK consumers call
+`runtime.runtimeVerificationService.verify(input)` and may pass the returned `coreVerdict`
+directly to `runtime.guardrailService.decideVerdict(...)`.
 
 ### POST /analysis/run — synchronous
 

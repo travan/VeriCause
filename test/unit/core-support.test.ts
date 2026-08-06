@@ -14,6 +14,7 @@ import { FileAnalysisRunStore } from "../../src/core/run-store";
 import {
   AIDiagnosisSchema,
   AiRuntimeOptionsSchema,
+  EvaluationDatasetSchema,
   InlineScenarioInputSchema,
   ScenarioDefinitionSchema,
 } from "../../src/core/schemas";
@@ -151,6 +152,18 @@ describe("core support modules", () => {
         summary: "bad",
       }),
     ).toThrow();
+
+    expect(() => EvaluationDatasetSchema.parse([{
+      id: "case-1",
+      input: { scenarioId: "invalid-selector" },
+      groundTruth: { value: "invalid_selector", source: "fixture" },
+    }])).not.toThrow();
+
+    expect(() => EvaluationDatasetSchema.parse([{
+      id: "case-1",
+      input: { scenarioId: "one", filePath: "two.md" },
+      groundTruth: { value: "invalid_selector", source: "fixture" },
+    }])).toThrow("exactly one scenario");
   });
 
   it("rejects unsafe AI runtime options", () => {

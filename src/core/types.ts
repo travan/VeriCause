@@ -1,3 +1,6 @@
+import { CoreVerdict, EvidenceBundle, VerificationClaim } from "./domain/verification";
+import { StageEvent, StructuredPipelineError } from "./domain/pipeline";
+
 export type ScenarioSourceType = "md" | "ts" | "js" | "http";
 export type ScenarioMode = "deterministic_fail" | "flaky" | "loose_element";
 export type ExecutionStatus = "passed" | "failed";
@@ -82,6 +85,7 @@ export type ValidationEvidence = {
   selectorExists: boolean | null;
   historicalPattern: "stable_fail" | "flaky" | "unknown";
   failureSignature: "timeout" | "detached" | "unknown";
+  observedAt?: string;
 };
 
 export type SelectorProbeResult = {
@@ -107,6 +111,10 @@ export type AnalysisReport = {
   aiDiagnosis?: AIDiagnosis;
   validationEvidence?: ValidationEvidence;
   verdict?: ReliabilityVerdict;
+  claim?: VerificationClaim<AnalysisCause>;
+  evidence?: EvidenceBundle;
+  coreVerdict?: CoreVerdict<AnalysisCause>;
+  stageEvents?: StageEvent[];
   createdAt: string;
 };
 
@@ -122,6 +130,7 @@ export type AnalysisRun = {
   pending: number;
   reportIds: string[];
   errors: string[];
+  structuredErrors?: StructuredPipelineError[];
   createdAt: string;
   updatedAt: string;
 };
@@ -144,4 +153,7 @@ export type ReliabilityValidationInput = {
 export type ReliabilityValidationOutput = {
   validationEvidence: ValidationEvidence;
   verdict: ReliabilityVerdict;
+  claim: VerificationClaim<AnalysisCause>;
+  evidence: EvidenceBundle;
+  coreVerdict: CoreVerdict<AnalysisCause>;
 };

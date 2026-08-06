@@ -1,52 +1,40 @@
 import {
-  AnalysisCause,
-  ReliabilityValidationInput,
-  ReliabilityValidationOutput,
-  ValidationEvidence,
-} from "./types";
+  BrowserFailureVerifier,
+  toBrowserEvidenceBundle,
+  toBrowserFailureClaim,
+} from "./browser/browser-failure-verifier";
+import { ReliabilityValidationInput, ReliabilityValidationOutput } from "./types";
 
 export class ReliabilityEvaluator {
+  constructor(private readonly verifier = new BrowserFailureVerifier()) {}
+
   async validate(
     input: ReliabilityValidationInput,
   ): Promise<ReliabilityValidationOutput> {
-    const actualCause = this.determineActualCause(input.validationEvidence);
-    const aiCorrect = input.aiDiagnosis.predictedCause === actualCause;
+    const claim = toBrowserFailureClaim(input.aiDiagnosis);
+    const evidence = toBrowserEvidenceBundle(input.validationEvidence);
+    const coreVerdict = this.verifier.verify(claim, evidence);
+    const actualCause = coreVerdict.observed === "timeout"
+      ? "unknown"
+      : coreVerdict.observed ?? "unknown";
+    const aiCorrect = coreVerdict.status === "supported";
 
     return {
       validationEvidence: input.validationEvidence,
+      claim,
+      evidence,
+      coreVerdict,
       verdict: {
         actualCause,
         aiCorrect,
         action:
-          actualCause === "unknown"
+          coreVerdict.status === "inconclusive"
             ? "needs_more_evidence"
-            : aiCorrect
+            : coreVerdict.status === "supported"
               ? "accept_ai"
               : "override_ai",
-        explanation: `AI predicted '${input.aiDiagnosis.predictedCause}' while validated evidence indicated '${actualCause}'.`,
+        explanation: coreVerdict.reasons.join(" "),
       },
     };
-  }
-
-  private determineActualCause(
-    evidence: ValidationEvidence,
-  ): Exclude<AnalysisCause, "timeout"> {
-    if (evidence.retryStatus === "passed") {
-      return "flaky_timing";
-    }
-
-    if (
-      evidence.retryStatus === "failed" &&
-      evidence.selectorExists === true &&
-      evidence.failureSignature === "detached"
-    ) {
-      return "loose_element";
-    }
-
-    if (evidence.retryStatus === "failed" && evidence.selectorExists === false) {
-      return "invalid_selector";
-    }
-
-    return "unknown";
   }
 }

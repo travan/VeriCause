@@ -155,10 +155,6 @@ describe("AnalysisService", () => {
     const reports = await service.run({ runAll: true });
 
     expect(reports).toHaveLength(2);
-    expect((service as any).detectFailureSignature(undefined, undefined)).toBe("unknown");
-    expect((service as any).detectFailureSignature("detached from dom", undefined)).toBe("detached");
-    expect((service as any).detectFailureSignature("something else", "detached")).toBe("detached");
-    expect((service as any).detectFailureSignature("something else", "stable")).toBe("unknown");
   });
 
   it("starts an async run and returns aggregated results", async () => {
@@ -347,7 +343,17 @@ describe("AnalysisService", () => {
     }
 
     const failedRun = await service.getRun(run.runId);
-    expect(failedRun.errors).toEqual(["boom"]);
+    expect(failedRun.errors).toEqual([
+      "Pipeline stage 'first_execution' failed: boom",
+    ]);
+    expect(failedRun.structuredErrors).toEqual([
+      expect.objectContaining({
+        code: "FIRST_EXECUTION_FAILED",
+        category: "system",
+        stage: "first_execution",
+        cause: "boom",
+      }),
+    ]);
   });
 
   it("marks async runs as passed when reports are passed", async () => {

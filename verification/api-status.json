@@ -1,0 +1,22 @@
+{
+  "target": "api",
+  "claim": {
+    "id": "api-status-claim",
+    "subject": "api",
+    "predicate": "status_code",
+    "operator": "equals",
+    "expected": 200,
+    "confidence": 0.98,
+    "rationale": "The API request should succeed.",
+    "source": "ai"
+  },
+  "evidence": {
+    "items": [{
+      "id": "api-status-observation",
+      "type": "api.status_code",
+      "value": 200,
+      "source": "http-client",
+      "observedAt": "2026-08-06T00:00:00.000Z"
+    }]
+  }
+}

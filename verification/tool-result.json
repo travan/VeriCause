@@ -1,0 +1,22 @@
+{
+  "target": "tool",
+  "claim": {
+    "id": "tool-result-claim",
+    "subject": "tool",
+    "predicate": "result_status",
+    "operator": "one_of",
+    "expected": ["success", "partial"],
+    "confidence": 0.88,
+    "rationale": "The agent tool should return an acceptable status.",
+    "source": "ai"
+  },
+  "evidence": {
+    "items": [{
+      "id": "tool-result-observation",
+      "type": "tool.result_status",
+      "value": "success",
+      "source": "agent-runtime",
+      "observedAt": "2026-08-06T00:00:00.000Z"
+    }]
+  }
+}

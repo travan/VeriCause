@@ -71,6 +71,16 @@ describe("AnalysisService integration", () => {
       expect(verdicts.get("invalid-selector")).toBe("invalid_selector");
       expect(verdicts.get("delayed-element")).toBe("flaky_timing");
       expect(verdicts.get("loose-element")).toBe("loose_element");
+      for (const report of result.reports) {
+        expect(report.stageEvents?.filter((event) => event.status === "completed")
+          .map((event) => event.stage)).toEqual([
+          "first_execution",
+          "ai_analysis",
+          "retry_execution",
+          "evidence_collection",
+          "claim_verification",
+        ]);
+      }
     } finally {
       await service.close();
       await rm(artifactsDir, { recursive: true, force: true });

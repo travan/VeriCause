@@ -1,17 +1,24 @@
 import { resolve, sep } from "node:path";
 
-import { RoutedAiAnalyzer } from "./ai-analyzer";
-import { PlaywrightExecutionEngine } from "./execution-engine";
-import { FileReportStore } from "./report-store";
-import { FileAnalysisRunStore } from "./run-store";
-import { ReliabilityEvaluator } from "./reliability-evaluator";
-import { ScenarioLoader } from "./scenario-loader";
+import {
+  AiAnalyzer,
+  AnalysisRunRepository,
+  ExecutionEngine,
+  ReportRepository,
+  ScenarioRepository,
+  VerdictEvaluator,
+} from "./ports";
+import {
+  EvidenceBuilder,
+  RuntimeEvidenceBuilder,
+} from "./evidence/runtime-evidence-builder";
+import { EvaluateDiagnosis } from "./application/evaluate-diagnosis";
+import { isAnalysisPipelineError } from "./domain/pipeline";
 import {
   AiRuntimeOptions,
   AnalysisReport,
   AnalysisRun,
   AnalysisRunResults,
-  ExecutionResult,
   ResolvedAiRuntimeOptions,
   RunAnalysisInput,
   ScenarioDefinition,
@@ -19,16 +26,27 @@ import {
 import { AiRuntimeOptionsSchema } from "./schemas";
 
 export class AnalysisService {
+  private readonly evaluateDiagnosis: EvaluateDiagnosis;
+
   constructor(
-    private readonly scenarioLoader: ScenarioLoader,
-    private readonly executionEngine: PlaywrightExecutionEngine,
-    private readonly aiAnalyzer: RoutedAiAnalyzer,
-    private readonly reliabilityEvaluator: ReliabilityEvaluator,
-    private readonly reportStore: FileReportStore,
-    private readonly runStore: FileAnalysisRunStore,
+    private readonly scenarioLoader: ScenarioRepository,
+    private readonly executionEngine: ExecutionEngine,
+    private readonly aiAnalyzer: AiAnalyzer,
+    private readonly reliabilityEvaluator: VerdictEvaluator,
+    private readonly reportStore: ReportRepository,
+    private readonly runStore: AnalysisRunRepository,
     private readonly runConcurrency: number,
     private readonly defaultAiRuntime: ResolvedAiRuntimeOptions,
-  ) {}
+    private readonly evidenceBuilder: EvidenceBuilder = new RuntimeEvidenceBuilder(),
+  ) {
+    this.evaluateDiagnosis = new EvaluateDiagnosis(
+      executionEngine,
+      aiAnalyzer,
+      evidenceBuilder,
+      reliabilityEvaluator,
+      reportStore,
+    );
+  }
 
   async discoverScenarios(): Promise<ScenarioDefinition[]> {
     return this.scenarioLoader.discoverScenarios();
@@ -40,12 +58,12 @@ export class AnalysisService {
     if (input.runAll) {
       const scenarios = await this.scenarioLoader.discoverScenarios();
       return this.runWithConcurrency(scenarios, this.runConcurrency, (scenario) =>
-        this.runScenario(scenario, aiRuntime),
+        this.evaluateDiagnosis.execute(scenario, aiRuntime),
       );
     }
 
     const scenario = await this.resolveScenario(input);
-    return this.runScenario(scenario, aiRuntime);
+    return this.evaluateDiagnosis.execute(scenario, aiRuntime);
   }
 
   async getReport(reportId: string): Promise<AnalysisReport> {
@@ -70,6 +88,7 @@ export class AnalysisService {
       pending: scenarios.length,
       reportIds: [],
       errors: [],
+      structuredErrors: [],
       createdAt: now,
       updatedAt: now,
     };
@@ -127,81 +146,12 @@ export class AnalysisService {
     throw new Error("Provide scenarioId, filePath, scenario, or runAll=true.");
   }
 
-  private async runScenario(
-    scenario: ScenarioDefinition,
-    aiRuntime: ResolvedAiRuntimeOptions,
-  ): Promise<AnalysisReport> {
-    const firstRun = await this.executionEngine.runFirstAttempt(scenario);
-
-    if (firstRun.status === "passed") {
-      const passedReport = this.buildPassedReport(scenario, firstRun, aiRuntime);
-      return this.reportStore.save(passedReport);
-    }
-
-    const aiDiagnosis = await this.aiAnalyzer.analyze({
-      scenario,
-      firstRun,
-    }, aiRuntime);
-    const retryRun = await this.executionEngine.retry(scenario);
-    const runtimeEvidence = {
-      retryStatus: retryRun.status,
-      selectorExists: retryRun.selectorExistsAfterRun ?? null,
-      historicalPattern:
-        retryRun.status === "passed"
-          ? "flaky"
-          : retryRun.selectorExistsAfterRun
-            ? "unknown"
-            : "stable_fail",
-      failureSignature: this.detectFailureSignature(
-        retryRun.errorMessage,
-        retryRun.statusTextAfterRun,
-      ),
-    } as const;
-    const { validationEvidence, verdict } =
-      await this.reliabilityEvaluator.validate({
-        aiDiagnosis,
-        validationEvidence: runtimeEvidence,
-      });
-
-    const report: AnalysisReport = {
-      reportId: this.buildReportId(scenario.id),
-      aiRuntime,
-      scenario,
-      firstRun,
-      retryRun,
-      aiDiagnosis,
-      validationEvidence,
-      verdict,
-      createdAt: new Date().toISOString(),
-    };
-
-    return this.reportStore.save(report);
-  }
-
-  private buildPassedReport(
-    scenario: ScenarioDefinition,
-    firstRun: ExecutionResult,
-    aiRuntime: ResolvedAiRuntimeOptions,
-  ): AnalysisReport {
-    return {
-      reportId: this.buildReportId(scenario.id),
-      aiRuntime,
-      scenario,
-      firstRun,
-      createdAt: new Date().toISOString(),
-    };
-  }
-
   private resolveAiRuntime(input?: AiRuntimeOptions): ResolvedAiRuntimeOptions {
     const validated = AiRuntimeOptionsSchema.parse(input ?? {});
     return {
       provider: validated.provider || this.defaultAiRuntime.provider,
       model: validated.model || this.defaultAiRuntime.model,
     };
-  }
-
-  private buildReportId(scenarioId: string): string {
-    return `${scenarioId}-${Date.now()}`;
   }
 
   private buildRunId(): string {
@@ -258,7 +208,7 @@ export class AnalysisService {
 
     try {
       await this.runWithConcurrency(scenarios, this.runConcurrency, async (scenario) => {
-        const report = await this.runScenario(scenario, run.aiRuntime);
+        const report = await this.evaluateDiagnosis.execute(scenario, run.aiRuntime);
 
         await queuePersist(() => {
           run.reportIds.push(report.reportId);
@@ -282,34 +232,11 @@ export class AnalysisService {
       await queuePersist(() => {
         run.status = "failed";
         run.errors.push(error instanceof Error ? error.message : String(error));
+        if (isAnalysisPipelineError(error)) {
+          run.structuredErrors?.push(error.details);
+        }
       });
     }
   }
 
-  private detectFailureSignature(
-    errorMessage: string | undefined,
-    statusText?: string,
-  ): "timeout" | "detached" | "unknown" {
-    const status = statusText?.toLowerCase();
-
-    if (status?.includes("detached")) {
-      return "detached";
-    }
-
-    if (!errorMessage) {
-      return "unknown";
-    }
-
-    const normalized = errorMessage.toLowerCase();
-
-    if (normalized.includes("detach")) {
-      return "detached";
-    }
-
-    if (normalized.includes("timeout")) {
-      return "timeout";
-    }
-
-    return "unknown";
-  }
 }

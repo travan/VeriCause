@@ -1,0 +1,22 @@
+{
+  "target": "shell",
+  "claim": {
+    "id": "shell-exit-claim",
+    "subject": "shell",
+    "predicate": "exit_code",
+    "operator": "equals",
+    "expected": 0,
+    "confidence": 0.95,
+    "rationale": "The command should exit successfully.",
+    "source": "ai"
+  },
+  "evidence": {
+    "items": [{
+      "id": "shell-exit-observation",
+      "type": "shell.exit_code",
+      "value": 0,
+      "source": "command-runner",
+      "observedAt": "2026-08-06T00:00:00.000Z"
+    }]
+  }
+}

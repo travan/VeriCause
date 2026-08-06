@@ -1,6 +1,6 @@
 {
   "name": "ai-reliability-layer",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "private": false,
   "description": "Validates AI failure analysis against Playwright runtime evidence. Includes a shared core, NestJS HTTP server, and CLI.",
   "keywords": [
@@ -14,10 +14,23 @@
   ],
   "license": "MIT",
   "main": "dist/core/runtime.js",
+  "types": "dist/core/runtime.d.ts",
   "exports": {
-    ".": "./dist/core/runtime.js",
-    "./server": "./dist/server/main.js",
-    "./cli": "./dist/cli/main.js"
+    ".": {
+      "types": "./dist/core/runtime.d.ts",
+      "require": "./dist/core/runtime.js",
+      "default": "./dist/core/runtime.js"
+    },
+    "./server": {
+      "types": "./dist/server/main.d.ts",
+      "require": "./dist/server/main.js",
+      "default": "./dist/server/main.js"
+    },
+    "./cli": {
+      "types": "./dist/cli/main.d.ts",
+      "require": "./dist/cli/main.js",
+      "default": "./dist/cli/main.js"
+    }
   },
   "bin": {
     "ai-reliability-layer": "dist/cli/main.js"

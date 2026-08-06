@@ -1,0 +1,27 @@
+[
+  {
+    "id": "invalid-selector-ground-truth",
+    "input": { "scenarioId": "invalid-selector" },
+    "groundTruth": {
+      "value": "invalid_selector",
+      "source": "fixture",
+      "notes": "The fixture intentionally targets a selector that does not exist."
+    }
+  },
+  {
+    "id": "delayed-element-ground-truth",
+    "input": { "scenarioId": "delayed-element" },
+    "groundTruth": {
+      "value": "flaky_timing",
+      "source": "fixture"
+    }
+  },
+  {
+    "id": "loose-element-ground-truth",
+    "input": { "scenarioId": "loose-element" },
+    "groundTruth": {
+      "value": "loose_element",
+      "source": "fixture"
+    }
+  }
+]
