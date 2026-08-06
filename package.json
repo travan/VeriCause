@@ -1,6 +1,6 @@
 {
   "name": "ai-reliability-layer",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": false,
   "description": "Validates AI failure analysis against Playwright runtime evidence. Includes a shared core, NestJS HTTP server, and CLI.",
   "keywords": [
@@ -15,6 +15,14 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/travan/VeriCause.git"
+  },
+  "homepage": "https://github.com/travan/VeriCause#readme",
+  "bugs": {
+    "url": "https://github.com/travan/VeriCause/issues"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
   },
   "license": "MIT",
   "main": "dist/core/runtime.js",
