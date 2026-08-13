@@ -1,6 +1,6 @@
 {
-  "name": "ai-reliability-layer",
-  "version": "0.1.2",
+  "name": "@travtn/vericause",
+  "version": "0.1.0",
   "private": false,
   "description": "Validates AI failure analysis against Playwright runtime evidence. Includes a shared core, NestJS HTTP server, and CLI.",
   "keywords": [
@@ -45,7 +45,7 @@
     }
   },
   "bin": {
-    "ai-reliability-layer": "dist/cli/main.js"
+    "vericause": "dist/cli/main.js"
   },
   "files": [
     "dist/",

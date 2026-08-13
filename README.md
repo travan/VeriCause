@@ -1,4 +1,4 @@
-# ai-reliability-layer
+# VeriCause
 
 Validates AI failure analysis against real runtime evidence. Run a scenario, let an AI diagnose the failure, then re-run it — the library cross-checks the AI's prediction against what actually happened in the browser and returns a structured verdict.
 
@@ -84,7 +84,7 @@ string `errors` array and additionally expose `structuredErrors` for machine pro
 ## Installation
 
 ```bash
-npm install ai-reliability-layer
+npm install @travtn/vericause
 npx playwright install chromium   # first time only
 ```
 
@@ -137,22 +137,22 @@ export AI_MODEL=gpt-4o
 
 ```bash
 # Analyse a single scenario by ID
-npx ai-reliability-layer analyze --scenario login-button
+npx vericause analyze --scenario login-button
 
 # Analyse all scenarios in ./scenarios/
-npx ai-reliability-layer analyze --all
+npx vericause analyze --all
 
 # Run in async (non-blocking) mode and stream progress
-npx ai-reliability-layer analyze --all --async
+npx vericause analyze --all --async
 
 # Analyse a specific file
-npx ai-reliability-layer analyze --file ./scenarios/login-button.ts
+npx vericause analyze --file ./scenarios/login-button.ts
 
 # Override AI provider/model for this run only
-npx ai-reliability-layer analyze --scenario login-button --provider claude --model claude-3-7-sonnet
+npx vericause analyze --scenario login-button --provider claude --model claude-3-7-sonnet
 
 # Discover all scenarios (returns JSON)
-npx ai-reliability-layer discover
+npx vericause discover
 ```
 
 ### Evaluate against ground truth
@@ -172,13 +172,13 @@ An evaluation dataset contains single-scenario inputs paired with known causes:
 Run the bundled fixture dataset:
 
 ```bash
-npx ai-reliability-layer evaluate --dataset ./evaluation/browser-fixtures.json
+npx vericause evaluate --dataset ./evaluation/browser-fixtures.json
 ```
 
 Use quality gates in CI (all rates are between `0` and `1`):
 
 ```bash
-npx ai-reliability-layer evaluate \
+npx vericause evaluate \
   --dataset ./evaluation/browser-fixtures.json \
   --min-decision-accuracy 0.95 \
   --max-false-accept-rate 0.01 \
@@ -191,7 +191,7 @@ under `artifacts/evaluations/` and can be retrieved through `GET /evaluation/:ev
 Compare a candidate evaluation with a persisted baseline:
 
 ```bash
-npx ai-reliability-layer compare \
+npx vericause compare \
   --baseline evaluation-1786000360046 \
   --candidate evaluation-1786000593554
 ```
@@ -213,7 +213,7 @@ while `averageConfidence` helps detect systematically over- or under-confident m
 ### 4. Run via Node.js API
 
 ```ts
-import { createCoreRuntime } from "ai-reliability-layer";
+import { createCoreRuntime } from "@travtn/vericause";
 
 const runtime = createCoreRuntime();
 
@@ -294,7 +294,7 @@ The guardrail maps an evidence-backed `CoreVerdict` to an operational decision:
 Apply the default policy to a persisted analysis report:
 
 ```bash
-npx ai-reliability-layer guard \
+npx vericause guard \
   --report invalid-selector-1786000590030 \
   --risk high
 ```
@@ -343,10 +343,10 @@ type is always `<claim.subject>.<claim.predicate>`. Missing matching evidence pr
 Run one of the bundled examples:
 
 ```bash
-npx ai-reliability-layer verify --input ./verification/api-status.json
-npx ai-reliability-layer verify --input ./verification/shell-exit.json
-npx ai-reliability-layer verify --input ./verification/database-rows.json
-npx ai-reliability-layer verify --input ./verification/tool-result.json
+npx vericause verify --input ./verification/api-status.json
+npx vericause verify --input ./verification/shell-exit.json
+npx vericause verify --input ./verification/database-rows.json
+npx vericause verify --input ./verification/tool-result.json
 ```
 
 HTTP consumers can use `POST /verification/run`. SDK consumers call
