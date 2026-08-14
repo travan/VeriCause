@@ -1,10 +1,14 @@
-# VeriCause
+# AI Reliability Runtime
 
-Validates AI failure analysis against real runtime evidence. Run a scenario, let an AI diagnose the failure, then re-run it — the library cross-checks the AI's prediction against what actually happened in the browser and returns a structured verdict.
+**AI Reliability Runtime** is the runtime-verifiable evolution of **AI Reliability Layer**.
+It turns AI claims into evidence-backed decisions: run a scenario, let an AI diagnose
+the result, collect runtime evidence, and return an auditable verdict with confidence.
+
+> **Runtime evidence for reliable AI claims.**
 
 ## How it works
 
-```
+```text
 Scenario (selector + URL)
   │
   ├─ First attempt (Playwright) ──► AI analysis (GPT / Claude / etc.)
@@ -15,6 +19,25 @@ Scenario (selector + URL)
                                            │
                                     AnalysisReport + Verdict
 ```
+
+## Architecture: shared reliability core
+
+The project exposes two I/O surfaces over one core asset: runtime-verifiable evidence.
+Evaluation I/O makes AI behavior measurable against ground truth; Runtime/Guardrail I/O
+makes the same evidence usable for real operational decisions.
+
+```mermaid
+flowchart LR
+    A["Offline / Evaluation I/O"] --> C["Reliability Core"]
+    B["Runtime / Guardrail I/O"] --> C
+    C --> D["Evidence collection"]
+    C --> E["Claim verification"]
+    C --> F["Verdict + confidence"]
+    C --> G["Audit trail"]
+```
+
+The browser pipeline is the first vertical, not a boundary: API, shell, database, and
+agent tool calls all submit evidence to the same Claim → Evidence → CoreVerdict model.
 
 A **verdict** can be:
 
@@ -84,7 +107,7 @@ string `errors` array and additionally expose `structuredErrors` for machine pro
 ## Installation
 
 ```bash
-npm install vericause
+npm install ai-reliability-runtime
 npx playwright install chromium   # first time only
 ```
 
@@ -137,22 +160,22 @@ export AI_MODEL=gpt-4o
 
 ```bash
 # Analyse a single scenario by ID
-npx vericause analyze --scenario login-button
+npx ai-reliability-runtime analyze --scenario login-button
 
 # Analyse all scenarios in ./scenarios/
-npx vericause analyze --all
+npx ai-reliability-runtime analyze --all
 
 # Run in async (non-blocking) mode and stream progress
-npx vericause analyze --all --async
+npx ai-reliability-runtime analyze --all --async
 
 # Analyse a specific file
-npx vericause analyze --file ./scenarios/login-button.ts
+npx ai-reliability-runtime analyze --file ./scenarios/login-button.ts
 
 # Override AI provider/model for this run only
-npx vericause analyze --scenario login-button --provider claude --model claude-3-7-sonnet
+npx ai-reliability-runtime analyze --scenario login-button --provider claude --model claude-3-7-sonnet
 
 # Discover all scenarios (returns JSON)
-npx vericause discover
+npx ai-reliability-runtime discover
 ```
 
 ### Evaluate against ground truth
@@ -172,13 +195,13 @@ An evaluation dataset contains single-scenario inputs paired with known causes:
 Run the bundled fixture dataset:
 
 ```bash
-npx vericause evaluate --dataset ./evaluation/browser-fixtures.json
+npx ai-reliability-runtime evaluate --dataset ./evaluation/browser-fixtures.json
 ```
 
 Use quality gates in CI (all rates are between `0` and `1`):
 
 ```bash
-npx vericause evaluate \
+npx ai-reliability-runtime evaluate \
   --dataset ./evaluation/browser-fixtures.json \
   --min-decision-accuracy 0.95 \
   --max-false-accept-rate 0.01 \
@@ -191,7 +214,7 @@ under `artifacts/evaluations/` and can be retrieved through `GET /evaluation/:ev
 Compare a candidate evaluation with a persisted baseline:
 
 ```bash
-npx vericause compare \
+npx ai-reliability-runtime compare \
   --baseline evaluation-1786000360046 \
   --candidate evaluation-1786000593554
 ```
@@ -213,7 +236,7 @@ while `averageConfidence` helps detect systematically over- or under-confident m
 ### 4. Run via Node.js API
 
 ```ts
-import { createCoreRuntime } from "vericause";
+import { createCoreRuntime } from "ai-reliability-runtime";
 
 const runtime = createCoreRuntime();
 
@@ -294,7 +317,7 @@ The guardrail maps an evidence-backed `CoreVerdict` to an operational decision:
 Apply the default policy to a persisted analysis report:
 
 ```bash
-npx vericause guard \
+npx ai-reliability-runtime guard \
   --report invalid-selector-1786000590030 \
   --risk high
 ```
@@ -343,10 +366,10 @@ type is always `<claim.subject>.<claim.predicate>`. Missing matching evidence pr
 Run one of the bundled examples:
 
 ```bash
-npx vericause verify --input ./verification/api-status.json
-npx vericause verify --input ./verification/shell-exit.json
-npx vericause verify --input ./verification/database-rows.json
-npx vericause verify --input ./verification/tool-result.json
+npx ai-reliability-runtime verify --input ./verification/api-status.json
+npx ai-reliability-runtime verify --input ./verification/shell-exit.json
+npx ai-reliability-runtime verify --input ./verification/database-rows.json
+npx ai-reliability-runtime verify --input ./verification/tool-result.json
 ```
 
 HTTP consumers can use `POST /verification/run`. SDK consumers call
