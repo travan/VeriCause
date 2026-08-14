@@ -84,7 +84,7 @@ string `errors` array and additionally expose `structuredErrors` for machine pro
 ## Installation
 
 ```bash
-npm install @travtn/vericause
+npm install vericause
 npx playwright install chromium   # first time only
 ```
 
@@ -213,7 +213,7 @@ while `averageConfidence` helps detect systematically over- or under-confident m
 ### 4. Run via Node.js API
 
 ```ts
-import { createCoreRuntime } from "@travtn/vericause";
+import { createCoreRuntime } from "vericause";
 
 const runtime = createCoreRuntime();
 

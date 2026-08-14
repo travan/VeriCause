@@ -1,5 +1,5 @@
 {
-  "name": "@travtn/vericause",
+  "name": "vericause",
   "version": "0.1.0",
   "private": false,
   "description": "Validates AI failure analysis against Playwright runtime evidence. Includes a shared core, NestJS HTTP server, and CLI.",
