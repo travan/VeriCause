@@ -61,6 +61,13 @@ export type ExecutionResult = {
   tracePath?: string;
   selectorExistsAfterRun?: boolean;
   statusTextAfterRun?: string;
+  navigation?: {
+    succeeded: boolean;
+    targetMatched: boolean;
+    requestedUrl: string;
+    finalUrl?: string;
+    httpStatus?: number;
+  };
   timingMs?: {
     getBrowser?: number;
     newContext?: number;
@@ -86,6 +93,7 @@ export type ValidationEvidence = {
   historicalPattern: "stable_fail" | "flaky" | "unknown";
   failureSignature: "timeout" | "detached" | "unknown";
   observedAt?: string;
+  pageVerified?: boolean;
 };
 
 export type SelectorProbeResult = {

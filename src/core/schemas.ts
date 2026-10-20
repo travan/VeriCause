@@ -127,6 +127,7 @@ export const GuardReportInputSchema = z.object({
   reportId: z.string().regex(SAFE_ID_RE),
   risk: RiskLevelSchema,
   proposedAction: z.object({
+    id: z.string().regex(SAFE_ID_RE).optional(),
     type: z.string().min(1),
     description: z.string().min(1),
   }).optional(),
@@ -153,6 +154,12 @@ export const RuntimeVerificationInputSchema = z.object({
     confidence: z.number().min(0).max(1),
     rationale: z.string().min(1),
     source: z.enum(["ai", "human", "system"]),
+    executionId: z.string().regex(SAFE_ID_RE).optional(),
+    maxEvidenceAgeMs: z.number().int().positive().max(Number.MAX_SAFE_INTEGER).optional(),
+    actionScope: z.object({
+      id: z.string().regex(SAFE_ID_RE),
+      type: z.string().min(1),
+    }).optional(),
   }),
   evidence: z.object({
     items: z.array(z.object({
@@ -161,6 +168,7 @@ export const RuntimeVerificationInputSchema = z.object({
       value: JsonValueSchema,
       source: z.string().min(1),
       observedAt: z.string().datetime(),
+      executionId: z.string().regex(SAFE_ID_RE).optional(),
     })),
   }),
 });

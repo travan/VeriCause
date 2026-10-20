@@ -1,12 +1,15 @@
 import { ExecutionResult, ValidationEvidence } from "../types";
 
 export interface EvidenceBuilder {
-  build(retryRun: ExecutionResult): ValidationEvidence;
+  build(retryRun: ExecutionResult, firstRun?: ExecutionResult): ValidationEvidence;
 }
 
 export class RuntimeEvidenceBuilder implements EvidenceBuilder {
-  build(retryRun: ExecutionResult): ValidationEvidence {
+  build(retryRun: ExecutionResult, firstRun?: ExecutionResult): ValidationEvidence {
     return {
+      pageVerified: [firstRun, retryRun].every((run) =>
+        run?.navigation?.succeeded === true && run.navigation.targetMatched === true,
+      ),
       retryStatus: retryRun.status,
       selectorExists: retryRun.selectorExistsAfterRun ?? null,
       historicalPattern:

@@ -106,7 +106,46 @@ describe("adapter and entrypoint modules", () => {
   it("prints usage", () => {
     const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
     printUsage();
-    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining("npx ai-reliability-layer"));
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining("npx ai-reliability-runtime"));
+  });
+
+  it("runs the demo with real verification without creating a browser runtime", async () => {
+    const logSpy = jest.spyOn(console, "log").mockImplementation(() => undefined);
+    const argv = process.argv;
+    try {
+      process.argv = ["node", "cli", "demo", "--json"];
+      await main();
+      const output = JSON.parse(logSpy.mock.calls[0][0]);
+      expect(output.demo).toBe(true);
+      expect(output.results.map((result: any) => [
+        result.coreVerdict.status, result.decision.action,
+      ])).toEqual([
+        ["supported", "allow"],
+        ["contradicted", "block"],
+        ["inconclusive", "escalate"],
+      ]);
+      expect(output.results[1].coreVerdict.observed).toBe(500);
+      expect(output.results[1].coreVerdict.evidenceRefs).toEqual([
+        output.results[1].evidence.items[0].id,
+      ]);
+      expect(output.results[2].evidence.items).toEqual([]);
+      expect(createCoreRuntime).not.toHaveBeenCalled();
+
+      logSpy.mockClear();
+      process.argv = ["node", "cli", "demo"];
+      await main();
+      expect(logSpy).toHaveBeenCalledWith(expect.stringContaining("Synthetic evidence"));
+
+      process.argv = ["node", "cli", "demo", "--help"];
+      await main();
+      expect(logSpy).toHaveBeenCalledWith(expect.stringContaining("DEMO OPTIONS"));
+
+      process.argv = ["node", "cli", "demo", "--jsno"];
+      await expect(main()).rejects.toThrow("Unknown demo option: --jsno");
+      expect(createCoreRuntime).not.toHaveBeenCalled();
+    } finally {
+      process.argv = argv;
+    }
   });
 
   it("waits for runs until completion", async () => {

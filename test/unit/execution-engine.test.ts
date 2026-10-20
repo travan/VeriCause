@@ -22,6 +22,39 @@ describe("PlaywrightExecutionEngine internals", () => {
     await expect(engine.close()).resolves.toBeUndefined();
   });
 
+  it.each(["http-error", "redirect", "network-error"])(
+    "does not click or trust the page after %s", async (failure) => {
+      const artifactsDir = await mkdtemp(join(tmpdir(), "navigation-failure-"));
+      const click = jest.fn();
+      const page = {
+        goto: jest.fn(async () => {
+          if (failure === "network-error") throw new Error("net::ERR_CONNECTION_REFUSED");
+          return { status: () => failure === "http-error" ? 500 : 200, ok: () => failure !== "http-error" };
+        }),
+        url: () => failure === "redirect" ? "https://app.example/login" : "https://app.example/checkout",
+        on: jest.fn(), route: jest.fn(async () => undefined), screenshot: jest.fn(async () => undefined),
+        locator: jest.fn(() => ({ count: async () => 0, first: () => ({ click }) })),
+      };
+      launchMock.mockResolvedValue({
+        newContext: async () => ({ newPage: async () => page, close: async () => undefined }),
+        close: async () => undefined,
+      });
+      const engine = new PlaywrightExecutionEngine(artifactsDir, "fixtures");
+      try {
+        const result = await engine.runFirstAttempt({
+          id: "checkout", name: "Checkout", sourceFile: "inline", sourceType: "http",
+          url: "https://app.example/checkout", selector: "#buy",
+        });
+        expect(result.status).toBe("failed");
+        expect(result.navigation?.succeeded && result.navigation.targetMatched).toBe(false);
+        expect(click).not.toHaveBeenCalled();
+      } finally {
+        await engine.close();
+        await rm(artifactsDir, { recursive: true, force: true });
+      }
+    },
+  );
+
   it("prepares the page and observes status values", async () => {
     const page: any = {
       on: jest.fn(),
@@ -133,11 +166,12 @@ describe("PlaywrightExecutionEngine internals", () => {
     const artifactsDir = await mkdtemp(join(tmpdir(), "ai-reliability-success-"));
     const screenshot = jest.fn(async () => undefined);
     const page: any = {
-      goto: jest.fn(async () => undefined),
+      goto: jest.fn(async () => null),
       screenshot,
       on: jest.fn(),
       route: jest.fn(async () => undefined),
     };
+    page.url = jest.fn(() => page.goto.mock.calls[0][0]);
     page.locator = jest.fn((selector: string) => {
       if (selector === "#status") {
         return {
@@ -207,11 +241,12 @@ describe("PlaywrightExecutionEngine internals", () => {
   it("returns failed attempts and tolerates observation read errors", async () => {
     const artifactsDir = await mkdtemp(join(tmpdir(), "ai-reliability-failure-"));
     const page: any = {
-      goto: jest.fn(async () => undefined),
+      goto: jest.fn(async () => null),
       screenshot: jest.fn(async () => undefined),
       on: jest.fn(),
       route: jest.fn(async () => undefined),
     };
+    page.url = jest.fn(() => page.goto.mock.calls[0][0]);
     page.locator = jest.fn((selector: string) => {
       if (selector === "#status") {
         return {
@@ -280,7 +315,8 @@ describe("PlaywrightExecutionEngine internals", () => {
   it("reuses a pooled context across successive runs", async () => {
     const artifactsDir = await mkdtemp(join(tmpdir(), "ai-reliability-pool-"));
     const makePage = (): any => ({
-      goto: jest.fn(async () => undefined),
+      url: () => "file://" + resolve(process.cwd(), "fixtures/pages/delayed-element.html"),
+      goto: jest.fn(async () => null),
       screenshot: jest.fn(async () => undefined),
       on: jest.fn(),
       route: jest.fn(async () => undefined),
@@ -339,7 +375,8 @@ describe("PlaywrightExecutionEngine internals", () => {
   it("drains the context pool when close() is called", async () => {
     const artifactsDir = await mkdtemp(join(tmpdir(), "ai-reliability-drain-"));
     const makePage = (): any => ({
-      goto: jest.fn(async () => undefined),
+      url: () => "file://" + resolve(process.cwd(), "fixtures/pages/delayed-element.html"),
+      goto: jest.fn(async () => null),
       screenshot: jest.fn(async () => undefined),
       on: jest.fn(),
       route: jest.fn(async () => undefined),

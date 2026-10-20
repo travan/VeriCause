@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 import {
   GuardReportInput,
   GuardrailDecision,
@@ -39,16 +41,17 @@ export class GuardrailService {
     policy?: GuardrailPolicyOverrides,
     reportId?: string,
   ): Promise<GuardrailDecision> {
-    const evaluation = this.policyEngine.evaluate(verdict, risk, policy);
+    const evaluation = this.policyEngine.evaluate(verdict, risk, policy, proposedAction);
     const createdAt = this.now();
     const decision: GuardrailDecision = {
-      decisionId: `decision-${createdAt.getTime()}`,
+      decisionId: `decision-${createdAt.getTime()}-${randomUUID()}`,
       reportId,
       action: evaluation.action,
       risk,
       policyId: evaluation.policy.id,
       verdictStatus: verdict.status,
       proposedAction,
+      actionScope: verdict.actionScope,
       reasons: evaluation.reasons,
       evidenceRefs: verdict.evidenceRefs,
       createdAt: createdAt.toISOString(),
