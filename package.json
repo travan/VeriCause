@@ -1,6 +1,6 @@
 {
   "name": "ai-reliability-runtime",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": false,
   "description": "Verify AI claims against runtime evidence. Debug Playwright failures, evaluate diagnoses, and return guardrail decisions through a TypeScript SDK, CLI, or HTTP API.",
   "keywords": [
@@ -60,6 +60,7 @@
     "node": ">=18"
   },
   "scripts": {
+    "test:release": "node --test scripts/release-check.test.cjs",
     "demo": "node dist/cli/main.js demo",
     "build": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\" && tsc -p tsconfig.build.json --incremental false",
     "prepare": "npm run build",

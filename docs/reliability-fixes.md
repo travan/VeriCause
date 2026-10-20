@@ -116,4 +116,17 @@ currently returns its result without automatically persisting an analysis report
 - The three browser fixtures demonstrate integration behavior. Broader benchmark data,
   workload testing, and application-specific policy validation remain separate work.
 
-The changes are local and have not been published to npm.
+## Release preparation: 0.2.0
+
+The release manifests now target 0.2.0. Unlike the earlier local-model consumer
+workspace, the 0.2.0 tarball was installed with its own dependencies in a new consumer
+directory. SDK import, CLI verdict/decision output, declaration entrypoint, package
+version, and MIT license checks passed. Type check, build, and five release-workflow
+regression tests passed. No runtime implementation changed during this version bump;
+the live-model results above are from the earlier 0.1.0 test tarball.
+
+The publish workflow validates a new stable version, runs all tests, installs and tests
+the tarball, and publishes that same tarball after the version bump reaches main.
+See [npm authorization setup](../DEVELOPMENT.md#one-time-npm-authorization) for the
+external Trusted Publisher configuration. It has not been verified by these local
+checks. No npm publication was performed during release preparation.

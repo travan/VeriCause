@@ -94,11 +94,49 @@ Add or update unit tests for provider routing and response parsing when changing
 
 The package is published as `ai-reliability-runtime`. The `prepare` script builds `dist/` before packaging.
 
+The next release is **0.2.0**, reflecting stricter evidence and action authorization
+requirements. See [the release notes](CHANGELOG.md) for migration details.
+
+### Automatic publishing
+
+Merging a change to `package.json` into `main` starts `.github/workflows/publish.yml`.
+The workflow checks whether the version is already on npm and skips existing versions.
+New stable versions must be newer than npm's `latest`; registry errors stop the release.
+It runs type checks, unit/integration/release tests, then installs the packed tarball
+into an isolated consumer and checks its SDK, CLI, types, and license. Only that tested
+tarball is published. A version bump is therefore a release request when merged.
+
+The workflow also accepts a matching `vX.Y.Z` tag pointing to a commit on `main`, or
+**Run workflow** on `main` to retry a failed release without another version bump.
+Publication is serialized, and rerunning a published version is a no-op.
+Prerelease versions are not supported by this stable release workflow.
+
+For later releases, run `npm version patch --no-git-tag-version` (or `minor` for
+incompatible changes while below 1.0), update `CHANGELOG.md`, and merge both manifest
+and lockfile changes through a PR.
+
+### One-time npm authorization
+
+This workflow uses [npm trusted publishing](https://docs.npmjs.com/trusted-publishers/)
+with OIDC; no `NPM_TOKEN` is required. In the npm package's **Settings → Trusted Publisher**,
+configure GitHub Actions with:
+
+- Organization or user: `travan`
+- Repository: `VeriCause`
+- Workflow filename: `publish.yml`
+- Environment: leave blank (the workflow does not declare an environment)
+- Allow direct `npm publish` if the settings show an allowed-actions control.
+
+This authorization lives on npm and cannot be enabled by committing workflow YAML.
+Verify it before merging the version bump. The workflow uses Node 24 and npm 11
+for OIDC support. GitHub Actions must be enabled for the repository.
+
 Before publishing:
 
 ```bash
 npm run check
 npm test
+npm run test:release
 npm run build
 npm pack --dry-run
 ```
