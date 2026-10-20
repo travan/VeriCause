@@ -4,6 +4,7 @@ export type RiskLevel = "low" | "medium" | "high" | "critical";
 export type GuardrailAction = "allow" | "block" | "retry" | "escalate";
 
 export type ProposedAction = {
+  id?: string;
   type: string;
   description: string;
 };
@@ -31,6 +32,7 @@ export type GuardrailDecision = {
   policyId: string;
   verdictStatus: CoreVerdict["status"];
   proposedAction?: ProposedAction;
+  actionScope?: CoreVerdict["actionScope"];
   reasons: string[];
   evidenceRefs: string[];
   createdAt: string;

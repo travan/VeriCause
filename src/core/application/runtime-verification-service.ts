@@ -5,10 +5,14 @@ import {
 import { StructuredRuntimeVerifier } from "../runtime-verification/structured-runtime-verifier";
 
 export class RuntimeVerificationService {
+  private readonly verifier: StructuredRuntimeVerifier;
+
   constructor(
-    private readonly verifier = new StructuredRuntimeVerifier(),
+    verifier: StructuredRuntimeVerifier | undefined = undefined,
     private readonly now: () => Date = () => new Date(),
-  ) {}
+  ) {
+    this.verifier = verifier ?? new StructuredRuntimeVerifier(now);
+  }
 
   verify(input: RuntimeVerificationInput): RuntimeVerificationResult {
     if (input.claim.subject !== input.target) {

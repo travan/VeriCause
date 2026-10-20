@@ -211,6 +211,32 @@ describe("AI layer", () => {
     );
   });
 
+  it("only sends an explicit Ollama reasoning setting to Ollama", async () => {
+    process.env.AI_OLLAMA_BASE_URL = "http://127.0.0.1:11434/v1";
+    process.env.AI_OLLAMA_API_KEY = "ollama";
+    process.env.AI_GROK_BASE_URL = "https://grok.example/v1";
+    process.env.AI_GROK_API_KEY = "grok-key";
+    process.env.AI_OLLAMA_REASONING_EFFORT = "none";
+    const fetchSpy = jest.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => ({ choices: [{ message: { content: JSON.stringify({
+        predictedCause: "invalid_selector", confidence: 0.9, summary: "local",
+      }) } }] }),
+    } as Response);
+    const analyzer = new OpenAiCompatibleAnalyzer({});
+    const runtime = { provider: "ollama", model: "qwen3.5:9b" };
+
+    await analyzer.analyze(baseInput, runtime);
+    expect(JSON.parse(String(fetchSpy.mock.calls[0][1]?.body)).reasoning_effort).toBe("none");
+
+    await analyzer.analyze(baseInput, openAiRuntime);
+    expect(JSON.parse(String(fetchSpy.mock.calls[1][1]?.body))).not.toHaveProperty("reasoning_effort");
+
+    delete process.env.AI_OLLAMA_REASONING_EFFORT;
+    await analyzer.analyze(baseInput, runtime);
+    expect(JSON.parse(String(fetchSpy.mock.calls[2][1]?.body))).not.toHaveProperty("reasoning_effort");
+  });
+
   it("surfaces provider HTTP errors", async () => {
     process.env.AI_GROK_BASE_URL = "https://grok.example/v1";
     process.env.AI_GROK_API_KEY = "grok-key";
@@ -332,9 +358,67 @@ describe("AI layer", () => {
 });
 
 describe("fetchWithRetry", () => {
+  const originalTimeout = process.env.AI_REQUEST_TIMEOUT_MS;
+
   beforeEach(() => {
     jest.restoreAllMocks();
+    delete process.env.AI_REQUEST_TIMEOUT_MS;
   });
+
+  afterEach(() => {
+    jest.useRealTimers();
+    if (originalTimeout === undefined) delete process.env.AI_REQUEST_TIMEOUT_MS;
+    else process.env.AI_REQUEST_TIMEOUT_MS = originalTimeout;
+  });
+
+  it("allows a slow local model to respond beyond the default timeout", async () => {
+    jest.useFakeTimers();
+    process.env.AI_REQUEST_TIMEOUT_MS = "120000";
+    const response = { ok: true } as Response;
+    const fetchSpy = jest.spyOn(globalThis, "fetch").mockImplementation((_url, init) =>
+      new Promise((resolve, reject) => {
+        setTimeout(() => resolve(response), 45_000);
+        init?.signal?.addEventListener("abort", () =>
+          reject(Object.assign(new Error("aborted"), { name: "AbortError" })),
+        );
+      }),
+    );
+
+    const result = fetchWithRetry("http://localhost:11434/v1/chat/completions", {});
+    await jest.advanceTimersByTimeAsync(45_000);
+    await expect(result).resolves.toBe(response);
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(jest.getTimerCount()).toBe(0);
+  });
+
+  it("aborts and reports the configured timeout after retries", async () => {
+    jest.useFakeTimers();
+    process.env.AI_REQUEST_TIMEOUT_MS = "100";
+    const fetchSpy = jest.spyOn(globalThis, "fetch").mockImplementation((_url, init) =>
+      new Promise((_resolve, reject) => {
+        init?.signal?.addEventListener("abort", () =>
+          reject(Object.assign(new Error("aborted"), { name: "AbortError" })),
+        );
+      }),
+    );
+    const result = expect(fetchWithRetry("http://localhost:11434/v1/chat/completions", {}))
+      .rejects.toThrow("AI request timed out after 100ms.");
+    await jest.runAllTimersAsync();
+    await result;
+    expect(fetchSpy).toHaveBeenCalledTimes(3);
+    expect(jest.getTimerCount()).toBe(0);
+  });
+
+  it.each(["", "0", "-1", "1.5", "slow", "Infinity", "600001"])(
+    "rejects invalid timeout %j before making a request",
+    async (value) => {
+      process.env.AI_REQUEST_TIMEOUT_MS = value;
+      const fetchSpy = jest.spyOn(globalThis, "fetch");
+      await expect(fetchWithRetry("http://localhost:11434", {}))
+        .rejects.toThrow("AI_REQUEST_TIMEOUT_MS must be an integer");
+      expect(fetchSpy).not.toHaveBeenCalled();
+    },
+  );
 
   it("returns the response on the first successful attempt", async () => {
     const mockResponse = { ok: true, status: 200 } as Response;

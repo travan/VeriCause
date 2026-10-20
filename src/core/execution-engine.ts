@@ -9,7 +9,7 @@ import {
 } from "playwright";
 
 import { ensureDir } from "./fs";
-import { ExecutionResult, ScenarioDefinition, SelectorProbeResult } from "./types";
+import { ExecutionResult, ScenarioDefinition } from "./types";
 
 const CONTEXT_POOL_MAX_SIZE = 5;
 
@@ -85,6 +85,11 @@ export class PlaywrightExecutionEngine {
     const screenshotPath = join(runDir, "screenshot.png");
     const tracePath = join(runDir, "trace.zip");
     const targetUrl = this.resolveScenarioUrl(scenario, phase);
+    const navigation: NonNullable<ExecutionResult["navigation"]> = {
+      succeeded: false,
+      targetMatched: false,
+      requestedUrl: targetUrl,
+    };
 
     await ensureDir(runDir);
     const prepareStart = Date.now();
@@ -97,8 +102,15 @@ export class PlaywrightExecutionEngine {
 
     try {
       const gotoStart = Date.now();
-      await page.goto(targetUrl, { waitUntil: "domcontentloaded" });
+      const response = await page.goto(targetUrl, { waitUntil: "domcontentloaded" });
       timingMs.goto = Date.now() - gotoStart;
+      navigation.httpStatus = response?.status();
+      navigation.finalUrl = page.url();
+      navigation.succeeded = response ? response.ok() : targetUrl.startsWith("file:");
+      navigation.targetMatched = this.matchesTargetUrl(targetUrl, navigation.finalUrl);
+      if (!navigation.succeeded || !navigation.targetMatched) {
+        throw new Error("Target page could not be verified after navigation.");
+      }
 
       const target = page.locator(scenario.selector).first();
       const waitStart = Date.now();
@@ -107,6 +119,10 @@ export class PlaywrightExecutionEngine {
         timeout: scenario.timeoutMs ?? 1000,
       });
       timingMs.waitFor = Date.now() - waitStart;
+      this.updateNavigation(page, navigation);
+      if (!navigation.targetMatched) {
+        throw new Error("Target page changed before the interaction.");
+      }
 
       const clickStart = Date.now();
       await target.click({
@@ -117,6 +133,7 @@ export class PlaywrightExecutionEngine {
       const observeStart = Date.now();
       const observation = await this.observePage(page, scenario);
       timingMs.observe = Date.now() - observeStart;
+      this.updateNavigation(page, navigation);
 
       if (this.successScreenshotEnabled) {
         const screenshotStart = Date.now();
@@ -129,6 +146,7 @@ export class PlaywrightExecutionEngine {
         runId,
         phase,
         status: "passed",
+        navigation,
         durationMs: Date.now() - startedAt,
         screenshotPath: this.successScreenshotEnabled ? screenshotPath : undefined,
         tracePath: this.traceEnabled ? tracePath : undefined,
@@ -144,6 +162,7 @@ export class PlaywrightExecutionEngine {
         statusText: undefined,
       }));
       timingMs.observe = Date.now() - observeStart;
+      this.updateNavigation(page, navigation);
 
       const screenshotStart = Date.now();
       await page.screenshot({ path: screenshotPath, fullPage: true }).catch(() => undefined);
@@ -154,6 +173,7 @@ export class PlaywrightExecutionEngine {
         runId,
         phase,
         status: "failed",
+        navigation,
         errorMessage: error instanceof Error ? error.message : String(error),
         durationMs: Date.now() - startedAt,
         screenshotPath,
@@ -177,6 +197,22 @@ export class PlaywrightExecutionEngine {
     }
 
     return this.browserPromise;
+  }
+
+  private matchesTargetUrl(requested: string, actual: string): boolean {
+    const normalize = (value: string) => {
+      const url = new URL(value);
+      url.hash = "";
+      url.searchParams.delete("phase");
+      return url.href;
+    };
+    return normalize(requested) === normalize(actual);
+  }
+
+  private updateNavigation(page: Page, navigation: NonNullable<ExecutionResult["navigation"]>): void {
+    navigation.finalUrl = page.url();
+    navigation.targetMatched = navigation.targetMatched &&
+      this.matchesTargetUrl(navigation.requestedUrl, navigation.finalUrl);
   }
 
   private async preparePage(page: Page): Promise<void> {

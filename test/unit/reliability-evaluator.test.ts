@@ -1,6 +1,27 @@
 import { ReliabilityEvaluator } from "../../src/core/reliability-evaluator";
 
 describe("ReliabilityEvaluator", () => {
+  it("does not diagnose an invalid selector without verified page navigation", async () => {
+    const result = await new ReliabilityEvaluator().validate({
+      aiDiagnosis: { predictedCause: "invalid_selector", confidence: 0.99, summary: "Wrong selector" },
+      validationEvidence: {
+        retryStatus: "failed", selectorExists: false,
+        historicalPattern: "stable_fail", failureSignature: "timeout",
+      },
+    });
+    expect(result.coreVerdict.status).toBe("inconclusive");
+  });
+
+  it("does not infer a selector cause from an unknown failure on a verified page", async () => {
+    const result = await new ReliabilityEvaluator().validate({
+      aiDiagnosis: { predictedCause: "invalid_selector", confidence: 0.99, summary: "Wrong selector" },
+      validationEvidence: {
+        pageVerified: true, retryStatus: "failed", selectorExists: false,
+        historicalPattern: "stable_fail", failureSignature: "unknown",
+      },
+    });
+    expect(result.coreVerdict.status).toBe("inconclusive");
+  });
   it("accepts AI when selector failure is stable", async () => {
     const evaluator = new ReliabilityEvaluator();
 
@@ -11,6 +32,7 @@ describe("ReliabilityEvaluator", () => {
         summary: "Selector is invalid.",
       },
       validationEvidence: {
+        pageVerified: true,
         retryStatus: "failed",
         selectorExists: false,
         historicalPattern: "stable_fail",
@@ -35,6 +57,7 @@ describe("ReliabilityEvaluator", () => {
         "selector-exists",
         "historical-pattern",
         "failure-signature",
+        "page-verified",
       ],
     });
   });
@@ -49,6 +72,7 @@ describe("ReliabilityEvaluator", () => {
         summary: "Looks like selector not found.",
       },
       validationEvidence: {
+        pageVerified: true,
         retryStatus: "passed",
         selectorExists: true,
         historicalPattern: "flaky",
@@ -72,6 +96,7 @@ describe("ReliabilityEvaluator", () => {
         summary: "Target could not be acted on reliably.",
       },
       validationEvidence: {
+        pageVerified: true,
         retryStatus: "failed",
         selectorExists: true,
         historicalPattern: "unknown",
@@ -92,6 +117,7 @@ describe("ReliabilityEvaluator", () => {
         summary: "Operation timed out.",
       },
       validationEvidence: {
+        pageVerified: true,
         retryStatus: "failed",
         selectorExists: true,
         historicalPattern: "unknown",

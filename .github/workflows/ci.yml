@@ -33,8 +33,18 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Check release safeguards
+        run: npm run test:release
+
       - name: Run unit tests
         run: npm run test:unit
 
       - name: Run integration tests
         run: npm run test:integration
+
+      - name: Test the package in an isolated consumer
+        run: |
+          RELEASE_VERSION=$(node -p "require('./package.json').version")
+          npm pack --pack-destination "$RUNNER_TEMP"
+          npm install --prefix "$RUNNER_TEMP/consumer" --no-audit --no-fund "$RUNNER_TEMP/ai-reliability-runtime-$RELEASE_VERSION.tgz"
+          node scripts/package-smoke.cjs "$RUNNER_TEMP/consumer"

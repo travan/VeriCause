@@ -27,6 +27,9 @@ export class OpenAiCompatibleAnalyzer implements FailureAnalyzer {
         body: JSON.stringify({
           model: runtime.model,
           temperature: 0.1,
+          ...(runtime.provider === "ollama" && process.env.AI_OLLAMA_REASONING_EFFORT
+            ? { reasoning_effort: process.env.AI_OLLAMA_REASONING_EFFORT }
+            : {}),
           messages: [
             {
               role: "system",

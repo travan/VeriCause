@@ -46,9 +46,43 @@ describe("GuardrailPolicyEngine", () => {
     });
     expect(result.reasons[0]).toContain("below policy minimum");
   });
+
+  it("requires a matching action ID and type even with permissive overrides", () => {
+    const scoped = { ...verdict("supported"), actionScope: { id: "action-1", type: "publish" },
+      validUntil: new Date(Date.now() + 60000).toISOString() };
+    for (const proposedAction of [
+      { type: "publish", description: "Missing ID" },
+      { id: "action-2", type: "publish", description: "Wrong execution" },
+      { id: "action-1", type: "purchase", description: "Wrong action" },
+    ]) {
+      expect(engine.evaluate(scoped, "high", { inconclusiveActions: { high: "allow" } }, proposedAction).action)
+        .toBe("escalate");
+      expect(engine.evaluate(scoped, "critical", {}, proposedAction).action).toBe("block");
+    }
+    const action = { id: "action-1", type: "publish", description: "Publish" };
+    expect(engine.evaluate(scoped, "high", {}, action).action).toBe("allow");
+    expect(engine.evaluate({ ...scoped, status: "contradicted" }, "high", {}, action).action).toBe("block");
+    expect(engine.evaluate({ ...scoped, validUntil: undefined }, "high", {}, action).action).toBe("escalate");
+    expect(engine.evaluate({ ...scoped, validUntil: "invalid" }, "high", {}, action).action).toBe("escalate");
+  });
+
+  it("counts distinct evidence references for minimum evidence policies", () => {
+    expect(engine.evaluate(verdict("supported", ["one", "one"]), "high", { minEvidenceCount: 2 }).action)
+      .toBe("escalate");
+  });
 });
 
 describe("GuardrailService", () => {
+  it("does not authorize an unrelated action using a supported diagnosis", async () => {
+    const service = new GuardrailService(
+      { getById: jest.fn(), save: jest.fn() } as never,
+      { save: jest.fn(async (decision) => decision), getById: jest.fn() },
+    );
+    const decision = await service.decideVerdict(verdict("supported"), "high", {
+      type: "purchase", description: "Submit a purchase",
+    });
+    expect(decision.action).toBe("escalate");
+  });
   it("loads a report, creates an auditable decision, and persists it", async () => {
     const save = jest.fn(async (decision) => decision);
     const service = new GuardrailService(
@@ -71,7 +105,7 @@ describe("GuardrailService", () => {
     });
 
     expect(decision).toMatchObject({
-      decisionId: "decision-1786017600000",
+      decisionId: expect.stringMatching(/^decision-1786017600000-/),
       reportId: "report-1",
       action: "block",
       verdictStatus: "contradicted",
@@ -88,6 +122,26 @@ describe("GuardrailService", () => {
     );
     await expect(service.decide({ reportId: "legacy", risk: "low" }))
       .rejects.toThrow("does not contain a core verdict");
+  });
+
+  it("keeps decisions made in the same millisecond as separate audit records", async () => {
+    const root = await mkdtemp(join(tmpdir(), "guardrail-unique-"));
+    const store = new FileGuardrailDecisionStore(root);
+    const service = new GuardrailService(
+      { getById: jest.fn(), save: jest.fn() } as never,
+      store, undefined, () => new Date("2026-10-20T00:00:00.000Z"),
+    );
+    try {
+      const [allowed, blocked] = await Promise.all([
+        service.decideVerdict(verdict("supported"), "high"),
+        service.decideVerdict(verdict("contradicted"), "high"),
+      ]);
+      expect(allowed.decisionId).not.toBe(blocked.decisionId);
+      expect((await service.getById(allowed.decisionId)).action).toBe("allow");
+      expect((await service.getById(blocked.decisionId)).action).toBe("block");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
   });
 
   it("persists decisions in a traversal-safe file store", async () => {

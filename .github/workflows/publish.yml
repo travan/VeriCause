@@ -2,32 +2,73 @@ name: Publish Package
 
 on:
   push:
+    branches:
+      - main
+    paths:
+      - package.json
     tags:
       - "v*"
+  workflow_dispatch:
 
 permissions:
-  id-token: write # Required for OIDC
   contents: read
 
-jobs:
-  publish:
-    runs-on: ubuntu-latest
+concurrency:
+  group: npm-publish
+  cancel-in-progress: false
 
+jobs:
+  release:
+    if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    outputs:
+      publish: ${{ steps.release.outputs.publish }}
+      version: ${{ steps.release.outputs.version }}
     steps:
       - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          package-manager-cache: false
+      - name: Require release commit on main
+        run: git merge-base --is-ancestor HEAD origin/main
+      - name: Check version and npm registry
+        id: release
+        run: node scripts/release-check.cjs
 
+  publish:
+    needs: release
+    if: needs.release.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v6
       - uses: actions/setup-node@v6
         with:
           node-version: "24"
           registry-url: "https://registry.npmjs.org"
           package-manager-cache: false
-
+      - name: Ensure npm supports trusted publishing
+        run: npm install --global npm@11
       - run: npm ci
-
-      - run: npm run check
-
-      - run: npm run test:unit
-
-      - run: npm run build --if-present
-
-      - run: npm publish --access public
+      - run: npx playwright install --with-deps chromium
+      - run: npm run check -- --incremental false
+      - run: npm run test:release
+      - run: npm run test:unit -- --watchman=false
+      - run: npm run test:integration -- --watchman=false
+      - run: npm run build
+      - name: Pack and test an isolated installation
+        env:
+          RELEASE_VERSION: ${{ needs.release.outputs.version }}
+        run: |
+          npm pack --pack-destination "$RUNNER_TEMP"
+          npm install --prefix "$RUNNER_TEMP/consumer" --no-audit --no-fund "$RUNNER_TEMP/ai-reliability-runtime-$RELEASE_VERSION.tgz"
+          node scripts/package-smoke.cjs "$RUNNER_TEMP/consumer"
+      - name: Publish the tested tarball using OIDC
+        env:
+          RELEASE_VERSION: ${{ needs.release.outputs.version }}
+        run: npm publish "$RUNNER_TEMP/ai-reliability-runtime-$RELEASE_VERSION.tgz" --access public --provenance

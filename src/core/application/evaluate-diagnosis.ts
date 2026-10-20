@@ -78,7 +78,7 @@ export class EvaluateDiagnosis {
       stageEvents,
       "evidence_collection",
       "analysis",
-      () => this.evidenceBuilder.build(retryRun),
+      () => this.evidenceBuilder.build(retryRun, firstRun),
     );
     const { validationEvidence, verdict, claim, evidence, coreVerdict } =
       await this.runStage(

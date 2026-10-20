@@ -1,239 +1,142 @@
 # AI Reliability Runtime
 
-**AI Reliability Runtime** is the runtime-verifiable evolution of **AI Reliability Layer**.
-It turns AI claims into evidence-backed decisions: run a scenario, let an AI diagnose
-the result, collect runtime evidence, and return an auditable verdict with confidence.
+**Check AI claims against runtime evidence before acting on them.**
 
-> **Runtime evidence for reliable AI claims.**
+An AI says a request succeeded. Your logs show HTTP 500. AI Reliability Runtime
+compares the claim with the observation and returns `contradicted`, so your
+application can choose to block the next action.
 
-## How it works
+For developers building AI agents, browser automation, and evaluation pipelines.
+Use it from **TypeScript, the CLI, or an HTTP API**.
+
+[Try the demo](#try-it-now) · [Use your own evidence](#runtime-verification) ·
+[Analyze browser failures](#browser-quick-start) · [Report an issue](https://github.com/travan/VeriCause/issues)
+
+## Try it now
+
+Requires Node.js 18 or newer. Run the built-in demo:
+
+```bash
+npx ai-reliability-runtime demo
+```
+
+No API key, account, or browser installation is needed. The demo uses synthetic
+observations with the real verifier and default guardrail policy. After npm downloads
+the package, the demo itself makes no network requests and writes no files.
+
+The same claim — “The API returned HTTP 200” with 98% AI confidence — gets three
+different outcomes:
 
 ```text
-Scenario (selector + URL)
-  │
-  ├─ First attempt (Playwright) ──► AI analysis (GPT / Claude / etc.)
-  │                                        │
-  └─ Retry attempt (Playwright) ──────────┘
-                                           │
-                       ReliabilityEvaluator: compare prediction vs runtime evidence
-                                           │
-                                    AnalysisReport + Verdict
+API returned 200         supported      -> allow
+API returned 500         contradicted   -> block
+No response evidence     inconclusive   -> escalate
 ```
 
-## Architecture: shared reliability core
+These are policy decisions at **high** risk. Your application enforces the returned
+action; the library does not automatically intercept or stop your agent.
 
-The project exposes two I/O surfaces over one core asset: runtime-verifiable evidence.
-Evaluation I/O makes AI behavior measurable against ground truth; Runtime/Guardrail I/O
-makes the same evidence usable for real operational decisions.
+Inspect the full claims, evidence references, and decision reasons:
 
-```mermaid
-flowchart LR
-    A["Offline / Evaluation I/O"] --> C["Reliability Core"]
-    B["Runtime / Guardrail I/O"] --> C
-    C --> D["Evidence collection"]
-    C --> E["Claim verification"]
-    C --> F["Verdict + confidence"]
-    C --> G["Audit trail"]
+```bash
+npx ai-reliability-runtime demo --json
 ```
 
-The browser pipeline is the first vertical, not a boundary: API, shell, database, and
-agent tool calls all submit evidence to the same Claim → Evidence → CoreVerdict model.
+## What can you use it for?
 
-A **verdict** can be:
-
-| `action` | Meaning |
+| Your workflow | What the runtime provides |
 |---|---|
-| `accept_ai` | Runtime evidence confirms the AI's prediction |
-| `override_ai` | Evidence contradicts the prediction |
-| `needs_more_evidence` | Inconclusive — actual cause is `unknown` |
+| Verify an agent's claim about an API, shell command, database operation, or tool call | Compare structured claims with observations supplied by your application. |
+| Investigate a failing browser interaction | Execute and retry a Playwright scenario, then compare the AI diagnosis with runtime evidence. |
+| Decide whether a workflow should proceed | Map verdicts to `allow`, `block`, `retry`, or `escalate` using configurable policies. |
+| Evaluate a model or prompt change | Measure against ground truth, apply quality gates, and compare saved evaluations. |
 
-### Shared verification core
-
-Browser automation is the first evidence source, not a boundary of the core model. Every
-analysis is normalized into the same pipeline:
-
-```text
-VerificationClaim -> EvidenceBundle -> CoreVerdict
-```
-
-- `VerificationClaim` describes a testable assertion, its source, rationale, and confidence.
-- `EvidenceBundle` contains timestamped observations with stable IDs and provenance.
-- `CoreVerdict` is `supported`, `contradicted`, or `inconclusive`, and references the
-  exact evidence used to reach that result.
-
-The existing browser-oriented `aiDiagnosis`, `validationEvidence`, and `verdict` fields
-remain available for compatibility. Reports also expose `claim`, `evidence`, and
-`coreVerdict` for consumers building evaluation harnesses or runtime policies.
-
-### Pipeline tracing and errors
-
-Each completed analysis report contains `stageEvents` for:
-
-```text
-first_execution -> ai_analysis -> retry_execution
-  -> evidence_collection -> claim_verification
-```
-
-Every stage emits `started` and `completed` events with timestamps and duration. A browser
-scenario returning a failed execution is recorded as `failureCategory: "target"`; it is
-runtime evidence, not a failure of the reliability system.
-
-Thrown pipeline failures use `AnalysisPipelineError` with a structured payload:
-
-```json
-{
-  "code": "AI_ANALYSIS_FAILED",
-  "category": "analysis",
-  "stage": "ai_analysis",
-  "message": "Pipeline stage 'ai_analysis' failed: provider unavailable",
-  "retryable": true,
-  "cause": "provider unavailable"
-}
-```
-
-Error categories are `target`, `analysis`, and `system`. Async runs retain the legacy
-string `errors` array and additionally expose `structuredErrors` for machine processing.
-
----
-
-## Requirements
-
-- Node.js ≥ 18
-- A Playwright-supported browser (Chromium is launched automatically)
-- An AI provider API key (or use the built-in `mock` provider for testing)
-
----
-
-## Installation
+## Install in your project
 
 ```bash
 npm install ai-reliability-runtime
-npx playwright install chromium   # first time only
 ```
 
----
+For API, shell, database, and tool evidence, continue with the
+[copyable SDK example](#runtime-verification). Chromium is only needed for browser
+analysis:
 
-## Quick start
+```bash
+npx playwright install chromium
+```
 
-### 1. Create a scenario file
+## Browser quick start
 
-**TypeScript** (`scenarios/login-button.ts`):
+### Configure an AI provider
+
+The built-in `mock` provider is the default and requires no credentials. It is useful
+for testing the pipeline; select a real provider to get model-generated diagnoses.
+For OpenAI:
+
+```bash
+export AI_PROVIDER=openai
+export AI_MODEL=gpt-4o
+export OPENAI_BASE_URL=https://api.openai.com/v1
+export OPENAI_API_KEY=sk-...
+```
+
+For Anthropic, use `AI_PROVIDER=claude` or `AI_PROVIDER=anthropic` with
+`ANTHROPIC_API_KEY`. See [Configuration](#configuration) for compatible providers.
+
+For an already installed Ollama model, start the local Ollama server and set:
+
+```bash
+export AI_PROVIDER=ollama
+export AI_MODEL=qwen3.5:9b  # use a model installed on your machine
+export AI_OLLAMA_BASE_URL=http://127.0.0.1:11434/v1
+export AI_OLLAMA_API_KEY=ollama
+export AI_REQUEST_TIMEOUT_MS=120000
+export AI_OLLAMA_REASONING_EFFORT=none
+```
+
+The API key above is a placeholder for a local server without authentication; the
+adapter requires a non-empty value. Use the server's actual key if authentication is
+enabled. Local models may need more time to load or generate a diagnosis. The timeout
+applies per request attempt; network errors and timeouts are retried up to three times.
+For models that support it, `AI_OLLAMA_REASONING_EFFORT=none` requests a response without
+thinking, which can reduce latency for these short diagnoses. Omit it to use the
+model's default. See [Ollama's compatibility documentation](https://docs.ollama.com/api/openai-compatibility)
+for supported reasoning settings.
+
+### Define a browser scenario
+
+The scenario directory defaults to `scenarios`. A scenario can be a TypeScript,
+JavaScript, or Markdown file.
+
+Create the `scenarios` directory and save `scenarios/login-button.ts`. Replace the
+example URL and selector with an application you can test:
+
 ```ts
 export default {
   id: "login-button",
   name: "Login button click",
-  url: "https://your-app.com/login",
+  url: "https://your-app.example/login",
   selector: "#login-btn",
-  expectedMode: "deterministic_fail",   // "deterministic_fail" | "flaky" | "loose_element"
+  expectedMode: "deterministic_fail",
   timeoutMs: 3000,
 };
 ```
 
-**Markdown with YAML frontmatter** (`scenarios/login-button.md`):
-```yaml
----
-id: login-button
-name: Login button click
-url: https://your-app.com/login
-selector: "#login-btn"
-expectedMode: deterministic_fail
-timeoutMs: 3000
----
-```
-
-### 2. Set your AI provider
+Run it with the package CLI:
 
 ```bash
-# OpenAI / OpenAI-compatible (Grok, Gemini, DeepSeek, Ollama…)
-export OPENAI_BASE_URL=https://api.openai.com/v1
-export OPENAI_API_KEY=sk-...
-
-# Or Anthropic / Claude
-export ANTHROPIC_API_KEY=sk-ant-...
-
-# Default provider to use
-export AI_PROVIDER=openai          # or: claude, grok, gemini, deepseek, ollama, mock
-export AI_MODEL=gpt-4o
-```
-
-### 3. Run via CLI
-
-```bash
-# Analyse a single scenario by ID
 npx ai-reliability-runtime analyze --scenario login-button
+```
 
-# Analyse all scenarios in ./scenarios/
-npx ai-reliability-runtime analyze --all
+The CLI writes JSON results to stdout. Discover available scenarios with:
 
-# Run in async (non-blocking) mode and stream progress
-npx ai-reliability-runtime analyze --all --async
-
-# Analyse a specific file
-npx ai-reliability-runtime analyze --file ./scenarios/login-button.ts
-
-# Override AI provider/model for this run only
-npx ai-reliability-runtime analyze --scenario login-button --provider claude --model claude-3-7-sonnet
-
-# Discover all scenarios (returns JSON)
+```bash
 npx ai-reliability-runtime discover
 ```
 
-### Evaluate against ground truth
+## TypeScript SDK
 
-An evaluation dataset contains single-scenario inputs paired with known causes:
-
-```json
-[
-  {
-    "id": "invalid-selector-ground-truth",
-    "input": { "scenarioId": "invalid-selector" },
-    "groundTruth": { "value": "invalid_selector", "source": "fixture" }
-  }
-]
-```
-
-Run the bundled fixture dataset:
-
-```bash
-npx ai-reliability-runtime evaluate --dataset ./evaluation/browser-fixtures.json
-```
-
-Use quality gates in CI (all rates are between `0` and `1`):
-
-```bash
-npx ai-reliability-runtime evaluate \
-  --dataset ./evaluation/browser-fixtures.json \
-  --min-decision-accuracy 0.95 \
-  --max-false-accept-rate 0.01 \
-  --max-inconclusive-rate 0.05
-```
-
-The CLI exits with code `2` when a quality gate fails. Evaluation reports are persisted
-under `artifacts/evaluations/` and can be retrieved through `GET /evaluation/:evaluationId`.
-
-Compare a candidate evaluation with a persisted baseline:
-
-```bash
-npx ai-reliability-runtime compare \
-  --baseline evaluation-1786000360046 \
-  --candidate evaluation-1786000593554
-```
-
-The comparison is direction-aware: higher accuracy is better, while lower false-decision,
-inconclusive, and Brier rates are better. Confidence changes are informational. The CLI
-exits with code `2` when the candidate contains any regression.
-
-Evaluation reports separate three measurements:
-
-- `claimAccuracy`: whether the AI claim matches ground truth.
-- `verifierAccuracy`: whether runtime verification derives the ground truth.
-- `decisionAccuracy`: whether the verifier correctly supports or contradicts the claim.
-
-Safety-oriented metrics include `falseAcceptRate`, `falseOverrideRate`, and
-`inconclusiveRate`. `brierScore` measures confidence calibration (lower is better),
-while `averageConfidence` helps detect systematically over- or under-confident models.
-
-### 4. Run via Node.js API
+The package root exports `createCoreRuntime`:
 
 ```ts
 import { createCoreRuntime } from "ai-reliability-runtime";
@@ -241,308 +144,371 @@ import { createCoreRuntime } from "ai-reliability-runtime";
 const runtime = createCoreRuntime();
 
 try {
-  // Analyse one scenario by ID
   const report = await runtime.analysisService.run({
     scenarioId: "login-button",
   });
-  console.log(report.verdict?.action);        // "accept_ai" | "override_ai" | "needs_more_evidence"
-  console.log(report.verdict?.actualCause);   // "invalid_selector" | "timeout" | "flaky_timing" | "loose_element" | "unknown"
 
-  // Analyse all scenarios
-  const reports = await runtime.analysisService.run({ runAll: true });
-
-  // Inline — no file needed
-  const inlineReport = await runtime.analysisService.run({
-    scenario: {
-      url: "https://your-app.com",
-      selector: "#submit",
-      expectedMode: "flaky",
-    },
-  });
+  if (!Array.isArray(report)) {
+    console.log(report.verdict?.action);
+    console.log(report.coreVerdict?.status);
+  }
 } finally {
   await runtime.close();
 }
 ```
 
-### 5. Start the HTTP server
+`analysisService.run()` accepts one of these inputs:
 
-```bash
-# Development (watch mode)
-npm run start:server:dev
+| Input | Description |
+|---|---|
+| `scenarioId` | Analyze a discovered scenario by ID. |
+| `filePath` | Analyze a scenario file inside the current project directory. |
+| `scenario` | Analyze an inline scenario without creating a file. |
+| `runAll: true` | Analyze every discovered scenario. Returns `AnalysisReport[]`. |
 
-# Production (build first)
-npm run build
-npm run start:server
+An inline scenario looks like this:
+
+```ts
+const report = await runtime.analysisService.run({
+  scenario: {
+    url: "https://your-app.example",
+    selector: "#submit",
+    expectedMode: "flaky",
+  },
+});
 ```
 
-Default port is `3000`. Override with `PORT=8080 npm run start:server`.
+Each browser report may contain:
 
----
+- `aiDiagnosis`: the provider's predicted cause and confidence;
+- `validationEvidence`: retry and selector observations;
+- `verdict`: compatibility verdict with `accept_ai`, `override_ai`, or
+  `needs_more_evidence`;
+- `claim`, `evidence`, and `coreVerdict`: normalized verification data; and
+- `stageEvents`: pipeline timing and failure events.
 
-## HTTP API
+## Runtime verification
 
-All requests and responses use `application/json`.
+Non-browser executors can submit evidence without giving the package authority to run
+the underlying action. Supported targets are `api`, `shell`, `database`, and `tool`.
+Claims support `equals`, `contains`, `one_of`, `gte`, and `lte`.
 
-### POST /evaluation/run
+Save this complete example as `verify.cjs` and run `node verify.cjs` after installing
+the package. Replace the example HTTP status with an observation from your own client.
 
-Runs a ground-truth dataset through the same evaluation engine exposed by the SDK and CLI.
+```js
+const { createCoreRuntime } = require("ai-reliability-runtime");
 
-```bash
-curl -X POST http://localhost:3000/evaluation/run \
-  -H "content-type: application/json" \
-  --data '{"cases":[{"id":"invalid-selector-ground-truth","input":{"scenarioId":"invalid-selector"},"groundTruth":{"value":"invalid_selector","source":"fixture"}}],"thresholds":{"minDecisionAccuracy":0.95,"maxFalseAcceptRate":0.01}}'
-```
+async function main() {
+  const runtime = createCoreRuntime();
+  try {
+    const result = runtime.runtimeVerificationService.verify({
+      target: "api",
+      claim: {
+        id: "api-status",
+        subject: "api",
+        predicate: "status_code",
+        operator: "equals",
+        expected: 200,
+        confidence: 0.98,
+        rationale: "The AI claims the endpoint responded with HTTP 200.",
+        source: "ai",
+      },
+      evidence: {
+        items: [{
+          id: "response-1",
+          type: "api.status_code",
+          value: 500,
+          source: "checkout-client",
+          observedAt: new Date().toISOString(),
+        }],
+      },
+    });
 
-### POST /evaluation/compare
-
-```json
-{
-  "baselineEvaluationId": "evaluation-1",
-  "candidateEvaluationId": "evaluation-2"
+    console.log(result.coreVerdict.status); // contradicted
+    const decision = await runtime.guardrailService.decideVerdict(
+      result.coreVerdict,
+      "high",
+    );
+    console.log(decision.action); // block
+  } finally {
+    await runtime.close();
+  }
 }
+
+main().catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
+});
 ```
 
-## Runtime guardrail
+The decision is saved under `artifacts/guardrail-decisions/`. Verification compares
+supplied data; it does not make an HTTP request or execute the underlying action.
 
-The guardrail maps an evidence-backed `CoreVerdict` to an operational decision:
+The normalized verdict is one of `supported`, `contradicted`, or `inconclusive`.
+Evidence is matched by type `<claim.subject>.<claim.predicate>` and, when supplied,
+`claim.executionId`. The default freshness window is **5 minutes**; set
+`claim.maxEvidenceAgeMs` to a positive integer to use a different window.
+Observations with invalid timestamps, future timestamps, or expired timestamps are
+excluded. No eligible evidence returns `inconclusive`.
+
+All eligible observations must have distinct IDs, belong to one execution, and agree
+on their value. Conflicting values, repeated IDs, or mixed executions return
+`inconclusive` regardless of input order. Set `executionId` on both the claim and its
+observations when a bundle contains multiple executions. Conclusive results include
+`validUntil`, derived from the oldest eligible observation's expiry.
+
+## Guardrails
+
+Apply a persisted analysis report to the default policy with the CLI:
+
+```bash
+npx ai-reliability-runtime guard --report <report-id> --risk high
+```
+
+The default policy is:
 
 | Core verdict | Default action |
 |---|---|
 | `supported` | `allow` |
 | `contradicted` | `block` |
-| `inconclusive`, low/medium risk | `retry` |
+| `inconclusive`, low or medium risk | `retry` |
 | `inconclusive`, high risk | `escalate` |
 | `inconclusive`, critical risk | `block` |
 
-Apply the default policy to a persisted analysis report:
+The SDK can apply the same policy to any `CoreVerdict`:
 
-```bash
-npx ai-reliability-runtime guard \
-  --report invalid-selector-1786000590030 \
-  --risk high
+```ts
+const decision = await runtime.guardrailService.decideVerdict(
+  result.coreVerdict,
+  "high",
+);
 ```
 
-The SDK also accepts a `CoreVerdict` directly through
-`runtime.guardrailService.decideVerdict(...)`. Decisions are persisted under
-`artifacts/guardrail-decisions/` for audit.
+Decisions are persisted under `artifacts/guardrail-decisions/` by default, with unique
+IDs even when multiple decisions are created in the same millisecond.
 
-### POST /guardrail/decide
+### Bind permission to a specific action
+
+Without `proposedAction`, the table above is a verdict-level policy recommendation.
+To authorize an actual action, pass its unique `id` and `type`. The verified claim must
+carry the same `actionScope`, and a supported verdict must have an unexpired
+`validUntil`. A missing or mismatched scope returns `escalate` (`block` at critical
+risk, or for a contradicted verdict), even if an inconclusive policy override says
+`allow`. Expired or missing validity on a supported action claim also prevents `allow`.
+
+Your application must choose the required precondition and bind it to the action.
+An arbitrary model-generated `actionScope` is not authorization. Use a unique action
+ID per intended execution and collect evidence from the relevant operation.
+
+```ts
+const proposedAction = {
+  id: "publish-build-42",
+  type: "build.publish",
+  description: "Publish build 42 after its checks pass",
+};
+const verified = runtime.runtimeVerificationService.verify({
+  target: "tool",
+  claim: {
+    id: "build-checks", subject: "tool", predicate: "checks_passed",
+    expected: true, confidence: 1, source: "system",
+    rationale: "This publication requires build 42 checks to pass.",
+    executionId: "build-42-checks",
+    maxEvidenceAgeMs: 60_000,
+    actionScope: { id: proposedAction.id, type: proposedAction.type },
+  },
+  evidence: { items: [{
+    id: "checks-result", type: "tool.checks_passed", value: true,
+    source: "build-runner", executionId: "build-42-checks",
+    observedAt: new Date().toISOString(),
+  }] },
+});
+const permission = await runtime.guardrailService.decideVerdict(
+  verified.coreVerdict, "high", proposedAction,
+);
+if (permission.action !== "allow") {
+  throw new Error(`Publication withheld: ${permission.action}`);
+}
+// Invoke your application's publish operation here.
+```
+
+The `true` observation above is sample data: use your build runner's actual result and
+observation time. This library returns a policy decision; your application enforces it.
+Browser failure diagnoses have no action scope, so they cannot authorize an unrelated
+action through `proposedAction`.
+
+### Migration notes
+
+Older observation files can now return `inconclusive` because their timestamps have
+expired. Collect fresh observations for live decisions. For historical evaluation,
+explicitly choose an appropriate age window and label the result as historical;
+do not relabel historical evidence as newly observed or reuse it as live permission.
+
+Custom browser executors must provide `navigation.succeeded` and
+`navigation.targetMatched` on both attempts. The built-in executor records the
+requested/final URLs and HTTP status, rejects HTTP errors and unexpected destinations,
+and rechecks the URL before interaction and after observation. Missing navigation
+proof makes the browser verdict `inconclusive`. Redirect to the intended destination
+in your scenario configuration instead of treating a different page as the target.
+
+## Evaluation
+
+Evaluation datasets pair an analysis input with a known cause:
 
 ```json
-{
-  "reportId": "invalid-selector-1786000590030",
-  "risk": "high",
-  "proposedAction": {
-    "type": "browser.click",
-    "description": "Click the purchase button"
-  },
-  "policy": {
-    "id": "checkout-strict-v1",
-    "minEvidenceCount": 3,
-    "inconclusiveActions": { "high": "block" }
+[
+  {
+    "id": "invalid-selector-case",
+    "input": { "scenarioId": "invalid-selector" },
+    "groundTruth": {
+      "value": "invalid_selector",
+      "source": "fixture"
+    }
   }
-}
+]
 ```
 
-Retrieve an audited decision with `GET /guardrail/decisions/:decisionId`. The guard CLI
-exits with code `2` for `block` and `escalate` decisions.
-
-## Non-browser runtime verification
-
-API clients, command runners, database drivers, and agent runtimes can submit observations
-without giving this library authority to execute the underlying action. Supported targets:
-
-| Target | Example predicate | Evidence type |
-|---|---|---|
-| `api` | `status_code` | `api.status_code` |
-| `shell` | `exit_code` | `shell.exit_code` |
-| `database` | `affected_rows` | `database.affected_rows` |
-| `tool` | `result_status` | `tool.result_status` |
-
-Claims support `equals`, `contains`, `one_of`, `gte`, and `lte`. The matching evidence
-type is always `<claim.subject>.<claim.predicate>`. Missing matching evidence produces an
-`inconclusive` verdict.
-
-Run one of the bundled examples:
+Run an evaluation and configure quality gates:
 
 ```bash
-npx ai-reliability-runtime verify --input ./verification/api-status.json
-npx ai-reliability-runtime verify --input ./verification/shell-exit.json
-npx ai-reliability-runtime verify --input ./verification/database-rows.json
-npx ai-reliability-runtime verify --input ./verification/tool-result.json
+npx ai-reliability-runtime evaluate \
+  --dataset ./evaluation/dataset.json \
+  --min-claim-accuracy 0.95 \
+  --min-verifier-accuracy 0.95 \
+  --min-decision-accuracy 0.95 \
+  --max-false-accept-rate 0.01 \
+  --max-inconclusive-rate 0.05
 ```
 
-HTTP consumers can use `POST /verification/run`. SDK consumers call
-`runtime.runtimeVerificationService.verify(input)` and may pass the returned `coreVerdict`
-directly to `runtime.guardrailService.decideVerdict(...)`.
+Evaluation results include claim, verifier, and decision accuracy, false-accept and
+false-override rates, inconclusive rate, average confidence, and Brier score. A failed
+quality gate exits with code `2`.
 
-### POST /analysis/run — synchronous
+Compare two saved evaluations to check for regressions:
+
+```bash
+npx ai-reliability-runtime compare --baseline <evaluation-id> --candidate <evaluation-id>
+```
+
+A comparison with a regression exits with code `2`.
+
+## HTTP server
+
+The server entry point is available from the `ai-reliability-runtime/server` export.
+For a standalone process, install the package and start the compiled server from your
+application's process manager after configuring the environment.
+
+```bash
+npm install ai-reliability-runtime
+npx playwright install chromium
+node -e 'require("ai-reliability-runtime/server").bootstrap()'
+```
+
+The server listens on port `3000` by default. Set `PORT` to override it.
+
+| Method | Route | Description |
+|---|---|---|
+| `GET` | `/scenarios` | List discovered scenarios. |
+| `POST` | `/analysis/run` | Run one analysis synchronously. |
+| `POST` | `/analysis/runs` | Start an asynchronous analysis run. |
+| `GET` | `/analysis/runs/:runId` | Read asynchronous run status. |
+| `GET` | `/analysis/runs/:runId/results` | Read a run and its reports. |
+| `GET` | `/analysis/reports/:reportId` | Read one analysis report. |
+| `POST` | `/evaluation/run` | Run an evaluation dataset. |
+| `GET` | `/evaluation/:evaluationId` | Read an evaluation report. |
+| `POST` | `/evaluation/compare` | Compare two evaluations. |
+| `POST` | `/verification/run` | Verify a claim and evidence bundle. |
+| `POST` | `/guardrail/decide` | Create a guardrail decision. |
+| `GET` | `/guardrail/decisions/:decisionId` | Read a guardrail decision. |
+
+For analysis requests, send one of `scenarioId`, `filePath`, `scenario`, or `runAll`.
+The provider and model can be sent as `ai.provider` and `ai.model`, or as the
+`x-ai-provider` and `x-ai-model` headers.
 
 ```bash
 curl -X POST http://localhost:3000/analysis/run \
-  -H "content-type: application/json" \
-  -H "x-ai-provider: mock" \
-  -H "x-ai-model: gpt-5.4" \
-  --data '{"scenarioId":"invalid-selector"}'
+  -H 'content-type: application/json' \
+  -H 'x-ai-provider: mock' \
+  --data '{"scenarioId":"login-button"}'
 ```
 
-Request body:
+## CLI commands
 
-```jsonc
-{
-  "scenarioId": "login-button",           // run by ID
-  // or "filePath": "./scenarios/x.ts"    // run from file (must be inside project root)
-  // or "runAll": true                    // run all discovered scenarios
-  // or "scenario": { "url": "https://...", "selector": "#x" }  // inline, no file needed
-  "ai": { "provider": "claude", "model": "claude-3-7-sonnet" }  // optional — also accepted as headers
-}
+```text
+ai-reliability-runtime demo [--json]
+ai-reliability-runtime discover
+ai-reliability-runtime analyze --scenario <id>
+ai-reliability-runtime analyze --file <path>
+ai-reliability-runtime analyze --all [--async]
+ai-reliability-runtime evaluate --dataset <path>
+ai-reliability-runtime compare --baseline <id> --candidate <id>
+ai-reliability-runtime guard --report <id> --risk <level>
+ai-reliability-runtime verify --input <path>
 ```
 
-Response:
-
-```jsonc
-{
-  "status": "completed",
-  "result": {
-    "reportId": "login-button-1744310400000",
-    "scenario": { "id": "login-button", "selector": "#login-btn" },
-    "firstRun":  { "status": "failed", "errorMessage": "Timeout 3000ms exceeded." },
-    "retryRun":  { "status": "failed" },
-    "aiDiagnosis": { "predictedCause": "invalid_selector", "confidence": 0.91, "summary": "..." },
-    "validationEvidence": { "retryStatus": "failed", "selectorExists": false, "historicalPattern": "stable_fail", "failureSignature": "timeout" },
-    "verdict": { "actualCause": "invalid_selector", "aiCorrect": true, "action": "accept_ai", "explanation": "..." },
-    "createdAt": "2026-04-10T00:00:00.000Z"
-  }
-}
-```
-
-AI provider/model can be passed as HTTP headers instead of (or to override) the request body:
-
-| Header | Body equivalent |
-|---|---|
-| `x-ai-provider` | `ai.provider` |
-| `x-ai-model` | `ai.model` |
-
-### POST /analysis/runs — async
-
-Returns immediately with a `runId`. Poll the status endpoint to track progress.
-
-### GET /analysis/runs/:runId
-
-```jsonc
-{
-  "run": {
-    "runId": "run-1744310400000",
-    "status": "running",   // "queued" | "running" | "completed" | "failed"
-    "total": 3, "completed": 1, "passed": 1, "failed": 0, "pending": 2
-  }
-}
-```
-
-### GET /analysis/runs/:runId/results
-
-Full run object + array of all `AnalysisReport` objects.
-
-### GET /analysis/reports/:reportId
-
-Single report by ID.
-
-### GET /scenarios
-
-List all discovered scenarios.
-
----
-
-## Scenario reference
-
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `id` | `string` | No | Stable identifier (alphanumeric, hyphens, underscores). Defaults to filename without extension. |
-| `name` | `string` | No | Human-readable label. |
-| `url` | `string` | **Yes** | Target URL. Must use `http:`, `https:`, or `fixture:` protocol. |
-| `selector` | `string` | **Yes** | CSS / XPath selector Playwright will wait for and click. |
-| `expectedMode` | `string` | No | `"deterministic_fail"`, `"flaky"`, or `"loose_element"`. Used as a hint in the AI prompt. |
-| `timeoutMs` | `number` | No | Per-operation timeout in milliseconds. Default: `1000`. |
-
----
+Run `npx ai-reliability-runtime --help` for all command options.
 
 ## Configuration
 
 | Variable | Default | Description |
 |---|---|---|
-| `AI_PROVIDER` | `mock` | Default AI provider for every run. |
+| `AI_PROVIDER` | `mock` | Default AI provider. |
 | `AI_MODEL` | `mock-reliability-v1` | Default model name. |
-| `OPENAI_BASE_URL` | — | Base URL for OpenAI or compatible providers. |
-| `OPENAI_API_KEY` | — | API key for OpenAI or compatible providers. |
-| `ANTHROPIC_API_KEY` | — | API key for Anthropic. |
-| `ANTHROPIC_BASE_URL` | `https://api.anthropic.com/v1` | Anthropic base URL override. |
-| `AI_<PROVIDER>_BASE_URL` | — | Per-provider base URL (e.g. `AI_GROK_BASE_URL`). |
-| `AI_<PROVIDER>_API_KEY` | — | Per-provider API key (e.g. `AI_GROK_API_KEY`). |
-| `SCENARIO_DIR` | `scenarios` | Directory to scan for scenario files. |
-| `BASE_OUTPUT_DIR` | `artifacts` | Root directory for reports, runs, and screenshots. |
-| `RUN_CONCURRENCY` | `cpus/2` (max 2) | Number of scenarios that run in parallel. |
-| `ENABLE_TRACE` | `false` | Save Playwright trace files on every run. |
-| `ENABLE_SUCCESS_SCREENSHOT` | `false` | Save screenshots on passing runs too. |
+| `AI_REQUEST_TIMEOUT_MS` | `30000` | AI request timeout per attempt, from 1 to 600000 milliseconds. |
+| `AI_OLLAMA_REASONING_EFFORT` | unset | Optional Ollama `reasoning_effort`; `none` requests no thinking on supported models. |
+| `OPENAI_BASE_URL` | unset | Base URL for `openai` or `openai-compatible`. |
+| `OPENAI_API_KEY` | unset | API key for `openai` or `openai-compatible`. |
+| `ANTHROPIC_BASE_URL` | `https://api.anthropic.com/v1` | Anthropic endpoint. |
+| `ANTHROPIC_API_KEY` | unset | Anthropic API key. |
+| `AI_<PROVIDER>_BASE_URL` | unset | Base URL for a registered provider. |
+| `AI_<PROVIDER>_API_KEY` | unset | API key for a registered provider. |
+| `SCENARIO_DIR` | `scenarios` | Directory containing scenario files. |
+| `BASE_OUTPUT_DIR` | `artifacts` | Directory for reports and runtime artifacts. |
+| `RUN_CONCURRENCY` | 1-2 | Parallel scenario limit. |
+| `ENABLE_TRACE` | `false` | Save Playwright trace files. |
+| `ENABLE_SUCCESS_SCREENSHOT` | `false` | Save screenshots for passing runs. |
 | `PORT` | `3000` | HTTP server port. |
 
-### Supported AI providers
+Registered providers are `mock`, `openai`, `openai-compatible`, `grok`, `qwen`,
+`deepseek`, `ollama`, `lmstudio`, `local`, `gemini`, `anthropic`, and `claude`.
 
-| Name | Protocol | Required environment variables |
-|---|---|---|
-| `mock` | built-in | none |
-| `openai` | OpenAI | `OPENAI_BASE_URL`, `OPENAI_API_KEY` |
-| `claude` / `anthropic` | Anthropic Messages | `ANTHROPIC_API_KEY` |
-| `grok` | OpenAI-compatible | `AI_GROK_BASE_URL`, `AI_GROK_API_KEY` |
-| `gemini` | OpenAI-compatible | `AI_GEMINI_BASE_URL`, `AI_GEMINI_API_KEY` |
-| `deepseek` | OpenAI-compatible | `AI_DEEPSEEK_BASE_URL`, `AI_DEEPSEEK_API_KEY` |
-| `ollama` | OpenAI-compatible | `AI_OLLAMA_BASE_URL`, `AI_OLLAMA_API_KEY` |
-| `lmstudio` | OpenAI-compatible | `AI_LMSTUDIO_BASE_URL`, `AI_LMSTUDIO_API_KEY` |
-| `local` | OpenAI-compatible | `AI_LOCAL_BASE_URL`, `AI_LOCAL_API_KEY` |
+## Artifacts
 
-Any other OpenAI-compatible provider can be added without code changes — just set `AI_<NAME>_BASE_URL` and `AI_<NAME>_API_KEY`.
+By default, reports are written under the configured `BASE_OUTPUT_DIR`:
 
----
-
-## Output structure
-
-```
+```text
 artifacts/
-  reports/                        # one JSON file per AnalysisReport
-  jobs/                           # one JSON file per async AnalysisRun
+  reports/
+  evaluations/
+  guardrail-decisions/
+  jobs/
   runs/
-    <scenario-id>/
-      <run-id>/
-        screenshot.png            # captured on failure (always), on pass (if ENABLE_SUCCESS_SCREENSHOT=true)
-        trace.zip                 # if ENABLE_TRACE=true
 ```
 
----
+## Security constraints
 
-## Development
+- Scenario URLs accept only `http:`, `https:`, or `fixture:` protocols.
+- File-based scenarios must remain inside the current project directory.
+- Provider names, model names, report IDs, and run IDs are validated before use.
+- Non-browser actions are never executed by the runtime verification service; callers
+  submit their own observations.
 
-```bash
-npm install
-npm run check          # type-check (no emit)
-npm run build          # compile to dist/
-npm test               # unit + integration tests
-npm run test:unit
-npm run test:integration
-npm run cli -- discover
-npm run cli -- analyze --all
-npm run start:server:dev
-```
+## Scope and limitations
 
----
+- This verifies structured claims against evidence, not arbitrary text or general factual accuracy.
+- For non-browser verification, your application supplies the observations. The verifier
+  checks their timestamps, execution scope, and agreement, but does not authenticate
+  their source. Keep collection and action binding in trusted application code.
+- Browser diagnoses use retry and selector observations. Treat results as evidence to
+  inspect, not a guarantee of the root cause.
+- A guardrail returns a decision. Your integration is responsible for enforcing it.
 
-## Security
+## Feedback and contributions
 
-- **`provider`** is validated as lowercase alphanumeric (hyphens and underscores allowed, max 63 chars). Uppercase, spaces, and control characters are rejected.
-- **`model`** must not contain control characters (newlines, carriage returns, etc.) and is capped at 200 chars.
-- **`scenario.url`** is restricted to `http:`, `https:`, and `fixture:` protocols. `file://`, `javascript:`, and other protocols are rejected to prevent SSRF.
-- **`filePath`** (CLI `--file` and API body) is resolved against `process.cwd()` and must remain inside the project directory. Paths like `../../etc/passwd` are rejected.
-- **`reportId` / `runId`** are validated against `[a-zA-Z0-9][a-zA-Z0-9_-]{0,199}` before being used as file names on disk.
-
----
+Found a claim you cannot verify yet? [Open an issue](https://github.com/travan/VeriCause/issues)
+with a small, redacted claim/evidence example and the result you expected.
+For repository setup and contribution checks, see the
+[development guide](https://github.com/travan/VeriCause/blob/main/DEVELOPMENT.md).
 
 ## License
 

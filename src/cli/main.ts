@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { resolve } from "node:path";
+import { runDemo } from "./demo";
 
 import { createCoreRuntime } from "../core/runtime";
 import { AnalysisRunStatus, RunAnalysisInput } from "../core/types";
@@ -83,12 +84,13 @@ export function parseVerifyArgs(args: string[]): { inputPath: string } {
 
 export function printUsage(): void {
   console.log(`
-ai-reliability-layer — validate AI failure analysis against runtime evidence
+ai-reliability-runtime — verify AI claims against runtime evidence
 
 USAGE
-  npx ai-reliability-layer <command> [options]
+  npx ai-reliability-runtime <command> [options]
 
 COMMANDS
+  demo                       Try evidence verification without setup or API keys
   discover                   List all scenario files found in SCENARIO_DIR
   analyze                    Run one or more scenarios and print a report
   evaluate                   Run a ground-truth evaluation dataset
@@ -122,40 +124,48 @@ GUARD OPTIONS
 VERIFY OPTIONS
   --input <path>             JSON claim and runtime evidence bundle
 
+DEMO OPTIONS
+  --json                     Print complete demo claims, evidence, and decisions
+
 EXAMPLES
+  # Try a demo without setup or credentials
+  npx ai-reliability-runtime demo
+
   # Discover all scenarios
-  npx ai-reliability-layer discover
+  npx ai-reliability-runtime discover
 
   # Analyse one scenario (by ID)
-  npx ai-reliability-layer analyze --scenario login-button
+  npx ai-reliability-runtime analyze --scenario login-button
 
   # Analyse a specific file
-  npx ai-reliability-layer analyze --file ./scenarios/login-button.ts
+  npx ai-reliability-runtime analyze --file ./scenarios/login-button.ts
 
   # Analyse everything in parallel
-  npx ai-reliability-layer analyze --all
+  npx ai-reliability-runtime analyze --all
 
   # Async mode — streams progress, prints final JSON when done
-  npx ai-reliability-layer analyze --all --async
+  npx ai-reliability-runtime analyze --all --async
 
   # Override provider/model for a single run
-  npx ai-reliability-layer analyze --scenario login-button --provider claude --model claude-3-7-sonnet
+  npx ai-reliability-runtime analyze --scenario login-button --provider claude --model claude-3-7-sonnet
 
   # Evaluate a ground-truth dataset
-  npx ai-reliability-layer evaluate --dataset ./evaluation/dataset.json
+  npx ai-reliability-runtime evaluate --dataset ./evaluation/dataset.json
 
   # Compare a candidate evaluation against a baseline
-  npx ai-reliability-layer compare --baseline evaluation-1 --candidate evaluation-2
+  npx ai-reliability-runtime compare --baseline evaluation-1 --candidate evaluation-2
 
   # Apply the default runtime guardrail policy
-  npx ai-reliability-layer guard --report report-1 --risk high
+  npx ai-reliability-runtime guard --report report-1 --risk high
 
   # Verify evidence collected by a non-browser executor
-  npx ai-reliability-layer verify --input ./verification/api-status.json
+  npx ai-reliability-runtime verify --input ./verification/api-status.json
 
 ENVIRONMENT VARIABLES
   AI_PROVIDER              Default provider  (default: mock)
   AI_MODEL                 Default model     (default: mock-reliability-v1)
+  AI_REQUEST_TIMEOUT_MS    AI request timeout per attempt (default: 30000)
+  AI_OLLAMA_REASONING_EFFORT Optional Ollama thinking control (e.g. none)
   OPENAI_BASE_URL          Base URL for OpenAI or compatible providers
   OPENAI_API_KEY           API key for OpenAI or compatible providers
   ANTHROPIC_API_KEY        API key for Anthropic / Claude
@@ -171,7 +181,7 @@ SUPPORTED PROVIDERS
   openai · claude/anthropic · grok · gemini · deepseek · ollama · lmstudio · local
 
 DOCS
-  https://github.com/your-org/ai-reliability-layer#readme
+  https://github.com/travan/VeriCause#readme
 `);
 }
 
@@ -267,6 +277,18 @@ export async function waitForRun(
 
 export async function main(): Promise<void> {
   const [command, ...args] = process.argv.slice(2);
+
+  if (command === "demo") {
+    if (args.includes("--help") || args.includes("-h")) {
+      printUsage();
+    } else {
+      const unknown = args.find((arg) => arg !== "--json");
+      if (unknown) throw new Error(`Unknown demo option: ${unknown}`);
+      runDemo(args.includes("--json"));
+    }
+    return;
+  }
+
   const runtime = createCoreRuntime();
 
   try {

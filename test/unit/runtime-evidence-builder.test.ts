@@ -21,12 +21,26 @@ describe("RuntimeEvidenceBuilder", () => {
       .toMatchObject({ historicalPattern: "flaky", retryStatus: "passed" });
   });
 
+  it("requires verified navigation on both attempts", () => {
+    const valid = retry({ navigation: {
+      succeeded: true, targetMatched: true, requestedUrl: "https://app.example/checkout",
+    } });
+    expect(builder.build(valid, valid).pageVerified).toBe(true);
+    expect(builder.build(valid).pageVerified).toBe(false);
+    expect(builder.build(valid, retry()).pageVerified).toBe(false);
+    expect(builder.build(retry({ navigation: { ...valid.navigation!, succeeded: false } }), valid).pageVerified)
+      .toBe(false);
+    expect(builder.build(valid, retry({ navigation: { ...valid.navigation!, targetMatched: false } })).pageVerified)
+      .toBe(false);
+  });
+
   it("classifies a missing selector and timeout", () => {
     expect(builder.build(retry({
       selectorExistsAfterRun: false,
       errorMessage: "Timeout 1000ms exceeded",
     }))).toEqual({
       retryStatus: "failed",
+      pageVerified: false,
       selectorExists: false,
       historicalPattern: "stable_fail",
       failureSignature: "timeout",

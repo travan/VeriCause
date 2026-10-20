@@ -41,6 +41,7 @@ export function toBrowserEvidenceBundle(
       item("selector-exists", "browser.selector_exists", evidence.selectorExists),
       item("historical-pattern", "browser.historical_pattern", evidence.historicalPattern),
       item("failure-signature", "browser.failure_signature", evidence.failureSignature),
+      item("page-verified", "browser.page_verified", evidence.pageVerified === true),
     ],
   };
 }
@@ -71,6 +72,7 @@ export class BrowserFailureVerifier implements ClaimVerifier<AnalysisCause> {
   }
 
   private determineActualCause(evidence: EvidenceBundle): AnalysisCause {
+    if (this.valueOf(evidence, "browser.page_verified") !== true) return "unknown";
     const retryStatus = this.valueOf(evidence, "browser.retry_status");
     const selectorExists = this.valueOf(evidence, "browser.selector_exists");
     const failureSignature = this.valueOf(evidence, "browser.failure_signature");
@@ -87,7 +89,7 @@ export class BrowserFailureVerifier implements ClaimVerifier<AnalysisCause> {
       return "loose_element";
     }
 
-    if (retryStatus === "failed" && selectorExists === false) {
+    if (retryStatus === "failed" && selectorExists === false && failureSignature === "timeout") {
       return "invalid_selector";
     }
 

@@ -2,6 +2,7 @@ import {
   GuardrailAction,
   GuardrailPolicy,
   GuardrailPolicyOverrides,
+  ProposedAction,
   RiskLevel,
 } from "../domain/guardrail";
 import { CoreVerdict } from "../domain/verification";
@@ -26,10 +27,13 @@ export type PolicyEvaluation = {
 };
 
 export class GuardrailPolicyEngine {
+  constructor(private readonly now: () => Date = () => new Date()) {}
+
   evaluate(
     verdict: CoreVerdict,
     risk: RiskLevel,
     overrides: GuardrailPolicyOverrides = {},
+    proposedAction?: ProposedAction,
   ): PolicyEvaluation {
     const policy: GuardrailPolicy = {
       ...DEFAULT_GUARDRAIL_POLICY,
@@ -40,13 +44,34 @@ export class GuardrailPolicyEngine {
       },
     };
 
-    if (verdict.evidenceRefs.length < policy.minEvidenceCount) {
+    if (proposedAction && (!proposedAction.id || !verdict.actionScope ||
+      verdict.actionScope.id !== proposedAction.id ||
+      verdict.actionScope.type !== proposedAction.type)) {
+      return {
+        action: risk === "critical" || verdict.status === "contradicted" ? "block" : "escalate",
+        policy,
+        reasons: ["The verified claim is not bound to this proposed action's ID and type."],
+      };
+    }
+
+    if (proposedAction && verdict.status === "supported" &&
+      (!verdict.validUntil || !Number.isFinite(Date.parse(verdict.validUntil)) ||
+        Date.parse(verdict.validUntil) <= this.now().getTime())) {
+      return {
+        action: risk === "critical" ? "block" : "escalate",
+        policy,
+        reasons: ["The action's evidence validity has expired or is missing; verify fresh evidence."],
+      };
+    }
+
+    const evidenceCount = new Set(verdict.evidenceRefs).size;
+    if (evidenceCount < policy.minEvidenceCount) {
       const action = policy.inconclusiveActions[risk];
       return {
         action,
         policy,
         reasons: [
-          `Evidence count ${verdict.evidenceRefs.length} is below policy minimum ${policy.minEvidenceCount}.`,
+          `Evidence count ${evidenceCount} is below policy minimum ${policy.minEvidenceCount}.`,
           `Applied inconclusive action '${action}' for risk '${risk}'.`,
         ],
       };

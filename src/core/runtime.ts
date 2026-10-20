@@ -13,6 +13,7 @@ import { FileAnalysisRunStore } from "./run-store";
 import { ScenarioLoader } from "./scenario-loader";
 
 export type {
+  ActionScope,
   ClaimSource,
   ClaimOperator,
   ClaimVerifier,

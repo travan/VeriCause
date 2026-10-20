@@ -2,6 +2,10 @@ const AI_FETCH_TIMEOUT_MS = 30_000;
 const AI_FETCH_MAX_ATTEMPTS = 3;
 
 export async function fetchWithRetry(url: string, init: RequestInit): Promise<Response> {
+  const timeoutMs = Number(process.env.AI_REQUEST_TIMEOUT_MS ?? AI_FETCH_TIMEOUT_MS);
+  if (!Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 600_000) {
+    throw new Error("AI_REQUEST_TIMEOUT_MS must be an integer between 1 and 600000.");
+  }
   let lastError: unknown;
 
   for (let attempt = 0; attempt < AI_FETCH_MAX_ATTEMPTS; attempt++) {
@@ -10,7 +14,7 @@ export async function fetchWithRetry(url: string, init: RequestInit): Promise<Re
     }
 
     const controller = new AbortController();
-    const tid = setTimeout(() => controller.abort(), AI_FETCH_TIMEOUT_MS);
+    const tid = setTimeout(() => controller.abort(), timeoutMs);
 
     try {
       const response = await fetch(url, { ...init, signal: controller.signal });
@@ -20,7 +24,7 @@ export async function fetchWithRetry(url: string, init: RequestInit): Promise<Re
       clearTimeout(tid);
       lastError =
         error instanceof Error && error.name === "AbortError"
-          ? new Error(`AI request timed out after ${AI_FETCH_TIMEOUT_MS}ms.`)
+          ? new Error(`AI request timed out after ${timeoutMs}ms.`)
           : error;
     }
   }

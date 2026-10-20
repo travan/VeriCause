@@ -64,6 +64,7 @@ describe("AnalysisService", () => {
           errorMessage: "Timeout",
           durationMs: 1000,
           selectorExistsAfterRun: false,
+          navigation: { succeeded: true, targetMatched: true, requestedUrl: "fixture://invalid-selector" },
           timestamp: new Date().toISOString(),
         })),
         retry: jest.fn(async () => ({
@@ -74,6 +75,7 @@ describe("AnalysisService", () => {
           errorMessage: "Timeout",
           durationMs: 1000,
           selectorExistsAfterRun: false,
+          navigation: { succeeded: true, targetMatched: true, requestedUrl: "fixture://invalid-selector" },
           timestamp: new Date().toISOString(),
         })),
         close: jest.fn(),
@@ -192,6 +194,7 @@ describe("AnalysisService", () => {
           errorMessage: "Timeout",
           durationMs: 1000,
           selectorExistsAfterRun: false,
+          navigation: { succeeded: true, targetMatched: true, requestedUrl: "fixture://invalid-selector" },
           timestamp: new Date().toISOString(),
         })),
         retry: jest.fn(async (scenario: ScenarioDefinition) => ({
@@ -202,6 +205,7 @@ describe("AnalysisService", () => {
           errorMessage: "Timeout",
           durationMs: 1000,
           selectorExistsAfterRun: false,
+          navigation: { succeeded: true, targetMatched: true, requestedUrl: "fixture://invalid-selector" },
           timestamp: new Date().toISOString(),
         })),
         close: jest.fn(),
